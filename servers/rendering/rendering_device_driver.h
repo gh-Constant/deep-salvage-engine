@@ -857,6 +857,9 @@ public:
 	/**** CALLBACK ****/
 	/******************/
 
+	// Native command handle is available only while a graph driver callback runs.
+	virtual uint64_t command_buffer_get_native_handle(CommandBufferID p_command_buffer) { return 0; }
+
 	typedef void (*DriverCallback)(RenderingDeviceDriver *p_driver, CommandBufferID p_command_buffer, void *p_userdata);
 
 	/*****************/

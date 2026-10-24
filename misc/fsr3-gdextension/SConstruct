@@ -1,0 +1,19 @@
+#!/usr/bin/env python
+from pathlib import Path
+import sys
+sys.path.insert(0, str(Path('tools').resolve()))
+from embed_shaders import generate
+generate()
+if not Path('api/extension_api.json').is_file():
+    Exit('Generate api/extension_api.json using the custom-upscaler engine first (see README).')
+ARGUMENTS.setdefault('custom_api_file', str(Path('api/extension_api.json').resolve()))
+ARGUMENTS.setdefault('build_profile', str(Path('build_profile.json').resolve()))
+env = SConscript('godot-cpp/SConstruct')
+env.Append(CPPPATH=['src', '.', 'build', 'thirdparty/vulkan-headers/include'])
+env.Append(CPPDEFINES=['FFX_GCC'])
+if env['platform'] == 'linux':
+    env.Append(LINKFLAGS=['-Wl,--no-undefined'])
+    env.Append(LIBS=['dl'])
+sources = Glob('src/*.cpp') + ['thirdparty/amd-ffx/ffx_fsr3upscaler.cpp', 'thirdparty/amd-ffx/ffx_object_management.cpp', 'thirdparty/amd-ffx/ffx_assert.cpp', 'thirdparty/amd-ffx/ffx_message.cpp']
+lib = env.SharedLibrary('addon/addons/fsr3/bin/libfsr3' + env['suffix'] + env['SHLIBSUFFIX'], sources)
+Default(lib)

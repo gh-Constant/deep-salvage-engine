@@ -8127,3 +8127,8 @@ RenderingDeviceDriverVulkan::~RenderingDeviceDriverVulkan() {
 		vkDestroyDevice(vk_device, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_DEVICE));
 	}
 }
+
+uint64_t RenderingDeviceDriverVulkan::command_buffer_get_native_handle(CommandBufferID p_command_buffer) {
+	const CommandBufferInfo *command_buffer = reinterpret_cast<const CommandBufferInfo *>(p_command_buffer.id);
+	return reinterpret_cast<uint64_t>(command_buffer->vk_command_buffer);
+}

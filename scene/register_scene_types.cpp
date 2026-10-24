@@ -170,6 +170,7 @@
 #include "scene/resources/texture_rd.h"
 #include "scene/resources/theme.h"
 #include "scene/resources/video_stream.h"
+#include "scene/resources/viewport_upscaler.h"
 #include "scene/resources/world_2d.h"
 #include "scene/theme/theme_db.h"
 #include "servers/display/display_server.h"
@@ -465,6 +466,7 @@ void register_scene_types() {
 	GDREGISTER_CLASS(ViewportTexture);
 
 	GDREGISTER_VIRTUAL_CLASS(CompositorEffect);
+	GDREGISTER_VIRTUAL_CLASS(ViewportUpscaler);
 
 	GDREGISTER_ABSTRACT_CLASS(MultiplayerPeer);
 	GDREGISTER_CLASS(MultiplayerPeerExtension);

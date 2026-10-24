@@ -808,6 +808,17 @@
 				Limits for various graphics hardware can be found in the [url=https://vulkan.gpuinfo.org/]Vulkan Hardware Database[/url].
 			</description>
 		</method>
+		<method name="native_compute_callback_add">
+			<return type="int" enum="Error" />
+			<param index="0" name="callback" type="Callable" />
+			<param index="1" name="sampled_textures" type="RID[]" />
+			<param index="2" name="storage_textures" type="RID[]" />
+			<description>
+				Schedules [param callback] on the render graph with the active native Vulkan command-buffer handle as its only argument. Call this method from the render thread after ending any active compute or draw list. The callback must record commands into that buffer without submitting it.
+				Declare all sampled inputs in [param sampled_textures] and storage outputs in [param storage_textures] so the render graph tracks dependencies. The callback must preserve the declared resource states. The callable and its captured resources are retained until the frame fence completes.
+				Returns [constant OK] on success or an error for invalid arguments or an unsupported backend. Currently only Vulkan provides a native command-buffer handle. This experimental method is intended for native extensions integrating external GPU runtimes.
+			</description>
+		</method>
 		<method name="raytracing_list_begin" experimental="">
 			<return type="int" />
 			<description>

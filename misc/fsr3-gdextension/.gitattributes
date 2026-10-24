@@ -1,0 +1,3 @@
+# Preserve upstream vendor formatting and valid unified-diff context lines.
+thirdparty/** -whitespace
+patches/*.patch -whitespace

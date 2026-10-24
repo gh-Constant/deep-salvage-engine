@@ -9,4 +9,13 @@
 	</description>
 	<tutorials>
 	</tutorials>
+	<methods>
+		<method name="get_temporal_upscaler_data" qualifiers="const">
+			<return type="Dictionary" />
+			<description>
+				Returns temporal metadata for a custom upscaler: renderer-normalized projection [code]jitter[/code], [code]delta_seconds[/code], [code]z_near[/code], [code]z_far[/code], vertical [code]fovy[/code] in radians, and an unjittered [code]reprojection[/code] matrix from the current camera to the previous frame. Convert [code]jitter[/code] to pixel offsets by multiplying by the internal render size and [code]0.5[/code].
+				Access this data during the viewport upscaler's render callback. The returned values describe the current render operation.
+			</description>
+		</method>
+	</methods>
 </class>

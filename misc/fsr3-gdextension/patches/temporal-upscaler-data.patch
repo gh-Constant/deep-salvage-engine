@@ -1,0 +1,49 @@
+--- a/servers/rendering/renderer_rd/storage_rd/render_scene_data_rd.h
++++ b/servers/rendering/renderer_rd/storage_rd/render_scene_data_rd.h
+@@ -39,7 +39,12 @@
+ class RenderSceneDataRD : public RenderSceneData {
+ 	GDCLASS(RenderSceneDataRD, RenderSceneData);
+ 
++protected:
++	static void _bind_methods();
++
+ public:
++	Dictionary get_temporal_upscaler_data() const;
++
+ 	bool calculate_motion_vectors = false;
+ 
+ 	Transform3D cam_transform;
+--- a/servers/rendering/renderer_rd/storage_rd/render_scene_data_rd.cpp
++++ b/servers/rendering/renderer_rd/storage_rd/render_scene_data_rd.cpp
+@@ -29,6 +29,8 @@
+ /**************************************************************************/
+ 
+ #include "render_scene_data_rd.h"
++#include "core/object/class_db.h"
++#include "core/variant/dictionary.h"
+ 
+ #include "servers/rendering/renderer_rd/renderer_scene_render_rd.h"
+ #include "servers/rendering/renderer_rd/storage_rd/light_storage.h"
+@@ -300,3 +302,22 @@
+ RID RenderSceneDataRD::get_uniform_buffer() const {
+ 	return uniform_buffer;
+ }
++
++// Metadata already consumed internally by temporal upscalers, made available
++// without exposing the scene UBO layout or renderer implementation pointers.
++void RenderSceneDataRD::_bind_methods() {
++    ClassDB::bind_method(D_METHOD("get_temporal_upscaler_data"), &RenderSceneDataRD::get_temporal_upscaler_data);
++}
++
++Dictionary RenderSceneDataRD::get_temporal_upscaler_data() const {
++    Dictionary result;
++    result["jitter"] = taa_jitter;
++    result["delta_seconds"] = time_step;
++    result["z_near"] = z_near;
++    result["z_far"] = z_far;
++    result["fovy"] = Math::deg_to_rad(Projection::get_fovy(cam_projection.get_fov(), 1.0 / cam_projection.get_aspect()));
++    Projection correction;
++    correction.set_depth_correction(true, true, false);
++    result["reprojection"] = (correction * prev_cam_projection) * prev_cam_transform.affine_inverse() * cam_transform * (correction * cam_projection).inverse();
++    return result;
++}

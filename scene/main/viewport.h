@@ -32,6 +32,7 @@
 
 #include "scene/main/node.h"
 #include "scene/resources/texture.h"
+#include "scene/resources/viewport_upscaler.h"
 #include "servers/display/display_server_enums.h"
 #include "servers/rendering/rendering_server_enums.h"
 
@@ -107,6 +108,7 @@ public:
 		SCALING_3D_MODE_METALFX_TEMPORAL,
 		SCALING_3D_MODE_NEAREST,
 		SCALING_3D_MODE_DLSS,
+		SCALING_3D_MODE_CUSTOM,
 		SCALING_3D_MODE_MAX
 	};
 
@@ -351,6 +353,7 @@ private:
 	Scaling3DMode scaling_3d_mode = SCALING_3D_MODE_BILINEAR;
 	float scaling_3d_scale = 1.0;
 	bool frame_generation = false;
+	Ref<ViewportUpscaler> scaling_3d_custom_upscaler;
 	float fsr_sharpness = 0.2f;
 	float texture_mipmap_bias = 0.0f;
 	AnisotropicFiltering anisotropic_filtering_level = ANISOTROPY_4X;
@@ -642,6 +645,8 @@ public:
 
 	void set_frame_generation(bool p_frame_generation);
 	bool get_frame_generation() const;
+	void set_scaling_3d_custom_upscaler(const Ref<ViewportUpscaler> &p_upscaler);
+	Ref<ViewportUpscaler> get_scaling_3d_custom_upscaler() const;
 
 	void set_fsr_sharpness(float p_fsr_sharpness);
 	float get_fsr_sharpness() const;

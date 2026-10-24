@@ -5129,8 +5129,14 @@ void Viewport::set_scaling_3d_mode(Scaling3DMode p_scaling_3d_mode) {
 		return;
 	}
 
+	if (p_scaling_3d_mode != SCALING_3D_MODE_CUSTOM && scaling_3d_custom_upscaler.is_valid()) {
+		set_scaling_3d_custom_upscaler(Ref<ViewportUpscaler>());
+	}
+
 	scaling_3d_mode = p_scaling_3d_mode;
 	RS::get_singleton()->viewport_set_scaling_3d_mode(viewport, (RSE::ViewportScaling3DMode)(int)p_scaling_3d_mode);
+
+	notify_property_list_changed();
 }
 
 Viewport::Scaling3DMode Viewport::get_scaling_3d_mode() const {
@@ -5165,6 +5171,25 @@ void Viewport::set_scaling_3d_scale(float p_scaling_3d_scale) {
 float Viewport::get_scaling_3d_scale() const {
 	ERR_READ_THREAD_GUARD_V(0);
 	return scaling_3d_scale;
+}
+
+void Viewport::set_scaling_3d_custom_upscaler(const Ref<ViewportUpscaler> &p_upscaler) {
+	ERR_MAIN_THREAD_GUARD;
+	ERR_FAIL_COND_MSG(scaling_3d_mode != SCALING_3D_MODE_CUSTOM && p_upscaler.is_valid(), "Can't set a custom upscaler if the scaling mode isn't set to custom.");
+
+	// Queue the new renderer resource before releasing the previous RID.
+	Ref<ViewportUpscaler> keep_previous_alive = scaling_3d_custom_upscaler;
+	scaling_3d_custom_upscaler = p_upscaler;
+	if (p_upscaler.is_valid()) {
+		RS::get_singleton()->viewport_set_scaling_3d_custom_upscaler(viewport, p_upscaler->get_rid());
+	} else {
+		RS::get_singleton()->viewport_set_scaling_3d_custom_upscaler(viewport, RID());
+	}
+}
+
+Ref<ViewportUpscaler> Viewport::get_scaling_3d_custom_upscaler() const {
+	ERR_READ_THREAD_GUARD_V(Ref<ViewportUpscaler>());
+	return scaling_3d_custom_upscaler;
 }
 
 void Viewport::set_fsr_sharpness(float p_fsr_sharpness) {
@@ -5423,6 +5448,8 @@ void Viewport::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("set_frame_generation", "frame_generation"), &Viewport::set_frame_generation);
 	ClassDB::bind_method(D_METHOD("get_frame_generation"), &Viewport::get_frame_generation);
+	ClassDB::bind_method(D_METHOD("set_scaling_3d_custom_upscaler", "upscaler"), &Viewport::set_scaling_3d_custom_upscaler);
+	ClassDB::bind_method(D_METHOD("get_scaling_3d_custom_upscaler"), &Viewport::get_scaling_3d_custom_upscaler);
 
 	ClassDB::bind_method(D_METHOD("set_fsr_sharpness", "fsr_sharpness"), &Viewport::set_fsr_sharpness);
 	ClassDB::bind_method(D_METHOD("get_fsr_sharpness"), &Viewport::get_fsr_sharpness);
@@ -5470,14 +5497,15 @@ void Viewport::_bind_methods() {
 	ADD_GROUP("Scaling 3D", "");
 	{
 #if defined(MACOS_ENABLED) || defined(IOS_ENABLED)
-		const char *scaling_3d_hint = "Nearest (Fastest):5,Bilinear (Fastest):0,FSR 1.0 (Fast):1,FSR 2.2 (Slow):2,MetalFX (Spatial - Fast):3,MetalFX (Temporal - Slow):4";
+		const char *scaling_3d_hint = "Nearest (Fastest):5,Bilinear (Fastest):0,FSR 1.0 (Fast):1,FSR 2.2 (Slow):2,MetalFX (Spatial - Fast):3,MetalFX (Temporal - Slow):4,Custom:7";
 #else
-		const char *scaling_3d_hint = "Nearest (Fastest):5,Bilinear (Fastest):0,FSR 1.0 (Fast):1,FSR 2.2 (Slow):2,NVIDIA DLSS (Temporal):6";
+		const char *scaling_3d_hint = "Nearest (Fastest):5,Bilinear (Fastest):0,FSR 1.0 (Fast):1,FSR 2.2 (Slow):2,NVIDIA DLSS (Temporal):6,Custom:7";
 #endif
 		ADD_PROPERTY(PropertyInfo(Variant::INT, "scaling_3d_mode", PROPERTY_HINT_ENUM, scaling_3d_hint), "set_scaling_3d_mode", "get_scaling_3d_mode");
 	}
-	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "scaling_3d_scale", PROPERTY_HINT_RANGE, "0.25,2.0,0.01"), "set_scaling_3d_scale", "get_scaling_3d_scale");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "scaling_3d_scale", PROPERTY_HINT_RANGE, "0.1,2.0,0.0001"), "set_scaling_3d_scale", "get_scaling_3d_scale");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "frame_generation"), "set_frame_generation", "get_frame_generation");
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "scaling_3d_custom_upscaler", PROPERTY_HINT_RESOURCE_TYPE, "ViewportUpscaler"), "set_scaling_3d_custom_upscaler", "get_scaling_3d_custom_upscaler");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "texture_mipmap_bias", PROPERTY_HINT_RANGE, "-2,2,0.001"), "set_texture_mipmap_bias", "get_texture_mipmap_bias");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "anisotropic_filtering_level", PROPERTY_HINT_ENUM, String::utf8("Disabled (Fastest),2× (Faster),4× (Fast),8× (Average),16x (Slow)")), "set_anisotropic_filtering_level", "get_anisotropic_filtering_level");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "fsr_sharpness", PROPERTY_HINT_RANGE, "0,2,0.01"), "set_fsr_sharpness", "get_fsr_sharpness");
@@ -5543,6 +5571,7 @@ void Viewport::_bind_methods() {
 	BIND_ENUM_CONSTANT(SCALING_3D_MODE_METALFX_TEMPORAL);
 	BIND_ENUM_CONSTANT(SCALING_3D_MODE_NEAREST);
 	BIND_ENUM_CONSTANT(SCALING_3D_MODE_DLSS);
+	BIND_ENUM_CONSTANT(SCALING_3D_MODE_CUSTOM);
 	BIND_ENUM_CONSTANT(SCALING_3D_MODE_MAX);
 
 	BIND_ENUM_CONSTANT(MSAA_DISABLED);
@@ -5665,6 +5694,11 @@ void Viewport::_validate_property(PropertyInfo &p_property) const {
 	if (!Engine::get_singleton()->is_editor_hint()) {
 		return;
 	}
+
+	if (scaling_3d_mode != SCALING_3D_MODE_CUSTOM && (p_property.name == "scaling_3d_custom_upscaler")) {
+		p_property.usage = PROPERTY_USAGE_NO_EDITOR;
+	}
+
 	if (vrs_mode != VRS_TEXTURE && (p_property.name == "vrs_texture")) {
 		p_property.usage = PROPERTY_USAGE_NO_EDITOR;
 	} else if (vrs_mode == VRS_DISABLED && (p_property.name == "vrs_update_mode")) {

@@ -429,6 +429,9 @@
 			The shadow atlas's resolution (used for omni and spot lights). The final value is rounded up to the nearest power of 2.
 			[b]Note:[/b] If this is set to [code]0[/code], no positional shadows will be visible at all. This can improve performance significantly on low-end systems by reducing both the CPU and GPU load (as fewer draw calls are needed to draw the scene without shadows).
 		</member>
+		<member name="scaling_3d_custom_upscaler" type="ViewportUpscaler" setter="set_scaling_3d_custom_upscaler" getter="get_scaling_3d_custom_upscaler">
+			The custom viewport upscaler to use if [member scaling_3d_mode] is set to [constant SCALING_3D_MODE_CUSTOM].
+		</member>
 		<member name="scaling_3d_mode" type="int" setter="set_scaling_3d_mode" getter="get_scaling_3d_mode" enum="Viewport.Scaling3DMode" default="0">
 			Sets scaling 3D mode. Bilinear scaling renders at different resolution to either undersample or supersample the viewport. FidelityFX Super Resolution 1.0, abbreviated to FSR, is an upscaling technology that produces high quality images at fast framerates by using a spatially aware upscaling algorithm. FSR is slightly more expensive than bilinear, but it produces significantly higher image quality. FSR should be used where possible.
 			To control this property on the root viewport, set the [member ProjectSettings.rendering/scaling_3d/mode] project setting.
@@ -588,6 +591,8 @@
 		</constant>
 		<constant name="SCALING_3D_MODE_DLSS" value="6" enum="Scaling3DMode">
 			Use NVIDIA DLSS upscaling for the viewport's 3D buffer. The amount of scaling can be set using [member Viewport.scaling_3d_scale]. Values less than [code]1.0[/code] will result in the viewport being upscaled using DLSS Super Resolution or DLSS Ray Regeneration, depending on raytracing mode ON/OFF. Values greater than [code]1.0[/code] are not supported and bilinear downsampling will be used instead. Scaling values: 0.5 - Performance, 0.58 - Balanced, 0.66 - Quality, 1.0 - DLAA
+		<constant name="SCALING_3D_MODE_CUSTOM" value="7" enum="Scaling3DMode">
+			Use a custom viewport upscaler for the viewport's 3D buffer. The amount of scaling can be set using [member scaling_3d_scale].
 		</constant>
 		<constant name="SCALING_3D_MODE_MAX" value="7" enum="Scaling3DMode">
 			Represents the size of the [enum Scaling3DMode] enum.

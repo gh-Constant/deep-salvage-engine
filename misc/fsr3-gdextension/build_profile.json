@@ -1,0 +1,22 @@
+{
+  "enabled_classes": [
+    "ViewportUpscaler",
+    "RenderData",
+    "RenderSceneBuffersRD",
+    "RenderSceneData",
+    "RenderingServer",
+    "RenderingDevice",
+    "RDTextureFormat",
+    "RDTextureView",
+    "RDSamplerState",
+    "RDUniform",
+    "RDShaderSource",
+    "RDShaderSPIRV",
+    "UniformSetCacheRD",
+    "Engine",
+    "Time",
+    "OS",
+    "RDPipelineSpecializationConstant",
+    "ProjectSettings"
+  ]
+}

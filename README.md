@@ -1,5 +1,9 @@
 # Godot Engine
 
+This fork's `fsr3-custom-editor` branch includes an experimental custom-upscaler
+editor and a native Linux FSR 3.1.4 addon/demo. See [FSR3_EDITOR.md](FSR3_EDITOR.md)
+for builds, source attribution, validation and release instructions.
+
 <p align="center">
   <a href="https://godotengine.org">
     <img src="misc/logo/logo_outlined.svg" width="400" alt="Godot Engine logo">

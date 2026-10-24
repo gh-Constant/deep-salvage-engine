@@ -907,6 +907,7 @@ protected:
 		SCALE_3D_FSR2,
 		SCALE_3D_MFX,
 		SCALE_3D_DLSS,
+		SCALE_3D_CUSTOM, // A ViewportUpscaler (FSR 3 module, add-ons).
 	};
 
 	// Optional DLSS Ray Reconstruction guide buffers. Supplied by the caller so

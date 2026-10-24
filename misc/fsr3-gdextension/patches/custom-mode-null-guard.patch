@@ -1,0 +1,22 @@
+--- a/servers/rendering/renderer_viewport.cpp
++++ b/servers/rendering/renderer_viewport.cpp
+@@ -262,7 +262,7 @@
+ 			}
+ 
+ 			uint32_t jitter_phase_count = 0;
+-			if (scaling_type == RSE::VIEWPORT_SCALING_3D_TYPE_CUSTOM) {
++			if (scaling_type == RSE::VIEWPORT_SCALING_3D_TYPE_CUSTOM && p_viewport->scaling_3d_custom_upscaler.is_valid()) {
+ 				jitter_phase_count = RSG::viewport->viewport_upscaler_get_jitter_phase_count(p_viewport->scaling_3d_custom_upscaler);
+ 			} else if (scaling_type == RSE::VIEWPORT_SCALING_3D_TYPE_TEMPORAL) {
+ 				// Implementation has been copied from ffxFsr2GetJitterPhaseCount.
+--- a/scene/main/viewport.cpp
++++ b/scene/main/viewport.cpp
+@@ -5089,6 +5089,8 @@
+ 	ERR_MAIN_THREAD_GUARD;
+ 	ERR_FAIL_COND_MSG(scaling_3d_mode != SCALING_3D_MODE_CUSTOM && p_upscaler.is_valid(), "Can't set a custom upscaler if the scaling mode isn't set to custom.");
+ 
++	// Queue the new renderer resource before releasing the previous RID.
++	Ref<ViewportUpscaler> keep_previous_alive = scaling_3d_custom_upscaler;
+ 	scaling_3d_custom_upscaler = p_upscaler;
+ 	if (p_upscaler.is_valid()) {
+ 		RS::get_singleton()->viewport_set_scaling_3d_custom_upscaler(viewport, p_upscaler->get_rid());

@@ -39,7 +39,12 @@
 class RenderSceneDataRD : public RenderSceneData {
 	GDCLASS(RenderSceneDataRD, RenderSceneData);
 
+protected:
+	static void _bind_methods();
+
 public:
+	Dictionary get_temporal_upscaler_data() const;
+
 	bool calculate_motion_vectors = false;
 
 	Transform3D cam_transform;

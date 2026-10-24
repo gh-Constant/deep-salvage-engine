@@ -1617,6 +1617,40 @@ Error RenderingDevice::buffer_update(RID p_buffer, uint32_t p_offset, uint32_t p
 	return _buffer_update(buffer, p_buffer, p_offset, p_size, p_data);
 }
 
+namespace {
+void native_compute_driver_callback(RenderingDeviceDriver *p_driver, RenderingDeviceDriver::CommandBufferID p_command_buffer, void *p_userdata) {
+	const Callable &callback = *static_cast<const Callable *>(p_userdata);
+	callback.call(p_driver->command_buffer_get_native_handle(p_command_buffer));
+}
+} //namespace
+
+Error RenderingDevice::native_compute_callback_add(const Callable &p_callback, const TypedArray<RID> &p_sampled_textures, const TypedArray<RID> &p_storage_textures) {
+	ERR_RENDER_THREAD_GUARD_V(ERR_UNAVAILABLE);
+	ERR_FAIL_COND_V(!p_callback.is_valid(), ERR_INVALID_PARAMETER);
+	ERR_FAIL_COND_V_MSG(driver->command_buffer_get_native_handle(frames[frame].command_buffer) == 0, ERR_UNAVAILABLE, "Native compute callbacks are currently implemented only for Vulkan.");
+	LocalVector<CallbackResource> resources;
+	for (int i = 0; i < p_sampled_textures.size(); ++i) {
+		CallbackResource resource;
+		resource.rid = p_sampled_textures[i];
+		resource.usage = CALLBACK_RESOURCE_USAGE_TEXTURE_SAMPLE;
+		resources.push_back(resource);
+	}
+	for (int i = 0; i < p_storage_textures.size(); ++i) {
+		CallbackResource resource;
+		resource.rid = p_storage_textures[i];
+		resource.usage = CALLBACK_RESOURCE_USAGE_STORAGE_IMAGE_READ_WRITE;
+		resources.push_back(resource);
+	}
+	// driver_callback_add supplies graph ordering and image layout transitions.
+	// The callback must restore the declared layouts and must never submit work.
+	auto *holder = frames[frame].native_compute_callbacks.push_back(p_callback);
+	Error error = driver_callback_add(native_compute_driver_callback, &holder->get(), VectorView<CallbackResource>(resources.ptr(), resources.size()));
+	if (error != OK) {
+		frames[frame].native_compute_callbacks.erase(holder);
+	}
+	return error;
+}
+
 Error RenderingDevice::driver_callback_add(RDD::DriverCallback p_callback, void *p_userdata, VectorView<CallbackResource> p_resources) {
 	ERR_RENDER_THREAD_GUARD_V(ERR_UNAVAILABLE);
 
@@ -8581,6 +8615,7 @@ void RenderingDevice::sync() {
 }
 
 void RenderingDevice::_free_pending_resources(int p_frame) {
+	frames[p_frame].native_compute_callbacks.clear();
 	// Free in dependency usage order, so nothing weird happens.
 	// Pipelines.
 	while (frames[p_frame].render_pipelines_to_dispose_of.front()) {
@@ -9789,6 +9824,7 @@ bool RenderingDevice::has_feature(const Features p_feature) const {
 }
 
 void RenderingDevice::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("native_compute_callback_add", "callback", "sampled_textures", "storage_textures"), &RenderingDevice::native_compute_callback_add);
 	ClassDB::bind_method(D_METHOD("texture_create", "format", "view", "data"), &RenderingDevice::_texture_create, DEFVAL(Array()));
 	ClassDB::bind_method(D_METHOD("texture_create_shared", "view", "with_texture"), &RenderingDevice::_texture_create_shared);
 	ClassDB::bind_method(D_METHOD("texture_create_shared_from_slice", "view", "with_texture", "layer", "mipmap", "mipmaps", "slice_type", "layers"), &RenderingDevice::_texture_create_shared_from_slice, DEFVAL(1), DEFVAL(TEXTURE_SLICE_2D), DEFVAL(0));

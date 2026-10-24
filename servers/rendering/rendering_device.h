@@ -333,6 +333,8 @@ public:
 		CallbackResourceUsage usage = CALLBACK_RESOURCE_USAGE_NONE;
 	};
 
+	Error native_compute_callback_add(const Callable &p_callback, const TypedArray<RID> &p_sampled_textures, const TypedArray<RID> &p_storage_textures);
+
 	Error driver_callback_add(RDD::DriverCallback p_callback, void *p_userdata, VectorView<CallbackResource> p_resources);
 
 	/*****************/
@@ -1904,6 +1906,8 @@ private:
 	// when the frame is cycled.
 
 	struct Frame {
+		// Retain native jobs/contexts until this frame fence has completed.
+		List<Callable> native_compute_callbacks;
 		// List in usage order, from last to free to first to free.
 		List<Buffer> buffers_to_dispose_of;
 		List<Texture> textures_to_dispose_of;

@@ -1,0 +1,653 @@
+/**************************************************************************/
+/*  ffx_common.cpp                                                        */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
+/**************************************************************************/
+
+#include "ffx_common.h"
+
+#include "thirdparty/amd-ffx/ffx_fsr1.h"
+#include "thirdparty/amd-ffx/ffx_fsr2.h"
+#include "thirdparty/amd-ffx/ffx_fsr3upscaler.h"
+
+using namespace RendererRD;
+
+RD::TextureType FFXCommon::ffx_resource_type_to_rd_texture_type(FfxResourceType p_type) {
+	switch (p_type) {
+		case FFX_RESOURCE_TYPE_TEXTURE1D:
+			return RD::TEXTURE_TYPE_1D;
+		case FFX_RESOURCE_TYPE_TEXTURE2D:
+			return RD::TEXTURE_TYPE_2D;
+		case FFX_RESOURCE_TYPE_TEXTURE3D:
+			return RD::TEXTURE_TYPE_3D;
+		default:
+#ifdef DEV_ENABLED
+			ERR_PRINT("Unknown FFX resource type.");
+#endif
+			return RD::TEXTURE_TYPE_MAX;
+	}
+}
+
+FfxResourceType FFXCommon::rd_texture_type_to_ffx_resource_type(RD::TextureType p_type) {
+	switch (p_type) {
+		case RD::TEXTURE_TYPE_1D:
+			return FFX_RESOURCE_TYPE_TEXTURE1D;
+		case RD::TEXTURE_TYPE_2D:
+			return FFX_RESOURCE_TYPE_TEXTURE2D;
+		case RD::TEXTURE_TYPE_3D:
+			return FFX_RESOURCE_TYPE_TEXTURE3D;
+		default:
+#ifdef DEV_ENABLED
+			ERR_PRINT("Unknown FFX resource type.");
+#endif
+			return FFX_RESOURCE_TYPE_BUFFER;
+	}
+}
+
+RD::DataFormat FFXCommon::ffx_surface_format_to_rd_format(FfxSurfaceFormat p_format) {
+	switch (p_format) {
+		case FFX_SURFACE_FORMAT_R32G32B32A32_TYPELESS:
+			return RD::DATA_FORMAT_R32G32B32A32_SFLOAT;
+		case FFX_SURFACE_FORMAT_R32G32B32A32_FLOAT:
+			return RD::DATA_FORMAT_R32G32B32A32_SFLOAT;
+		case FFX_SURFACE_FORMAT_R16G16B16A16_FLOAT:
+			return RD::DATA_FORMAT_R16G16B16A16_SFLOAT;
+		case FFX_SURFACE_FORMAT_R32G32_FLOAT:
+			return RD::DATA_FORMAT_R32G32_SFLOAT;
+		case FFX_SURFACE_FORMAT_R32_UINT:
+			return RD::DATA_FORMAT_R32_UINT;
+		case FFX_SURFACE_FORMAT_R8G8B8A8_TYPELESS:
+			return RD::DATA_FORMAT_R8G8B8A8_UNORM;
+		case FFX_SURFACE_FORMAT_R8G8B8A8_UNORM:
+			return RD::DATA_FORMAT_R8G8B8A8_UNORM;
+		case FFX_SURFACE_FORMAT_R11G11B10_FLOAT:
+			return RD::DATA_FORMAT_B10G11R11_UFLOAT_PACK32;
+		case FFX_SURFACE_FORMAT_R16G16_FLOAT:
+			return RD::DATA_FORMAT_R16G16_SFLOAT;
+		case FFX_SURFACE_FORMAT_R16G16_UINT:
+			return RD::DATA_FORMAT_R16G16_UINT;
+		case FFX_SURFACE_FORMAT_R16_FLOAT:
+			return RD::DATA_FORMAT_R16_SFLOAT;
+		case FFX_SURFACE_FORMAT_R16_UINT:
+			return RD::DATA_FORMAT_R16_UINT;
+		case FFX_SURFACE_FORMAT_R16_UNORM:
+			return RD::DATA_FORMAT_R16_UNORM;
+		case FFX_SURFACE_FORMAT_R16_SNORM:
+			return RD::DATA_FORMAT_R16_SNORM;
+		case FFX_SURFACE_FORMAT_R8_UNORM:
+			return RD::DATA_FORMAT_R8_UNORM;
+		case FFX_SURFACE_FORMAT_R8_UINT:
+			return RD::DATA_FORMAT_R8_UINT;
+		case FFX_SURFACE_FORMAT_R8G8_UNORM:
+			return RD::DATA_FORMAT_R8G8_UNORM;
+		case FFX_SURFACE_FORMAT_R32_FLOAT:
+			return RD::DATA_FORMAT_R32_SFLOAT;
+		default:
+#ifdef DEV_ENABLED
+			ERR_PRINT("Unknown FFX resource type.");
+#endif
+			return RD::DATA_FORMAT_MAX;
+	}
+}
+
+FfxSurfaceFormat FFXCommon::rd_format_to_ffx_surface_format(RD::DataFormat p_format) {
+	switch (p_format) {
+		case RD::DATA_FORMAT_R32G32B32A32_SFLOAT:
+			return FFX_SURFACE_FORMAT_R32G32B32A32_FLOAT;
+		case RD::DATA_FORMAT_R16G16B16A16_SFLOAT:
+			return FFX_SURFACE_FORMAT_R16G16B16A16_FLOAT;
+		case RD::DATA_FORMAT_R32G32_SFLOAT:
+			return FFX_SURFACE_FORMAT_R32G32_FLOAT;
+		case RD::DATA_FORMAT_R32_UINT:
+			return FFX_SURFACE_FORMAT_R32_UINT;
+		case RD::DATA_FORMAT_R8G8B8A8_UNORM:
+			return FFX_SURFACE_FORMAT_R8G8B8A8_UNORM;
+		case RD::DATA_FORMAT_B10G11R11_UFLOAT_PACK32:
+			return FFX_SURFACE_FORMAT_R11G11B10_FLOAT;
+		case RD::DATA_FORMAT_R16G16_SFLOAT:
+			return FFX_SURFACE_FORMAT_R16G16_FLOAT;
+		case RD::DATA_FORMAT_R16G16_UINT:
+			return FFX_SURFACE_FORMAT_R16G16_UINT;
+		case RD::DATA_FORMAT_R16_SFLOAT:
+			return FFX_SURFACE_FORMAT_R16_FLOAT;
+		case RD::DATA_FORMAT_R16_UINT:
+			return FFX_SURFACE_FORMAT_R16_UINT;
+		case RD::DATA_FORMAT_R16_UNORM:
+			return FFX_SURFACE_FORMAT_R16_UNORM;
+		case RD::DATA_FORMAT_R16_SNORM:
+			return FFX_SURFACE_FORMAT_R16_SNORM;
+		case RD::DATA_FORMAT_R8_UNORM:
+			return FFX_SURFACE_FORMAT_R8_UNORM;
+		case RD::DATA_FORMAT_R8_UINT:
+			return FFX_SURFACE_FORMAT_R8_UINT;
+		case RD::DATA_FORMAT_R8G8_UNORM:
+			return FFX_SURFACE_FORMAT_R8G8_UNORM;
+		case RD::DATA_FORMAT_R32_SFLOAT:
+			return FFX_SURFACE_FORMAT_R32_FLOAT;
+		default:
+			return FFX_SURFACE_FORMAT_UNKNOWN;
+	}
+}
+
+static uint32_t ffx_usage_to_rd_usage_flags(uint32_t p_flags) {
+	uint32_t ret = RD::TEXTURE_USAGE_SAMPLING_BIT | RD::TEXTURE_USAGE_CAN_UPDATE_BIT;
+
+	if (p_flags & FFX_RESOURCE_USAGE_RENDERTARGET) {
+		ret |= RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT;
+	}
+
+	if (p_flags & FFX_RESOURCE_USAGE_UAV) {
+		ret |= RD::TEXTURE_USAGE_STORAGE_BIT;
+		ret |= RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT;
+		ret |= RD::TEXTURE_USAGE_CAN_COPY_TO_BIT;
+	}
+
+	return ret;
+}
+
+static FfxVersionNumber get_sdk_version_rd(FfxInterface *p_backend_interface) {
+	return FFX_SDK_MAKE_VERSION(FFX_SDK_VERSION_MAJOR, FFX_SDK_VERSION_MINOR, FFX_SDK_VERSION_PATCH);
+}
+
+static FfxErrorCode create_backend_context_rd(FfxInterface *p_backend_interface, FfxEffect p_effect,
+		FfxEffectBindlessConfig *p_bindless_config, FfxUInt32 *p_effect_context_id) {
+	FFXCommon::Scratch &scratch = *reinterpret_cast<FFXCommon::Scratch *>(p_backend_interface->scratchBuffer);
+
+	if (p_bindless_config) {
+		WARN_PRINT_ONCE("Fidelity FX: Bindless resources are not supported in Godot.");
+	}
+
+	// Store pointer to the device common to all contexts.
+	scratch.device = p_backend_interface->device;
+	scratch.effect_type = p_effect;
+	scratch.staging_constant_buffer = (uint8_t *)memalloc(FFX_STAGING_CONSTANT_BUFFER_SIZE);
+	ERR_FAIL_NULL_V(scratch.staging_constant_buffer, FFX_ERROR_OUT_OF_MEMORY);
+
+	// Create a ring buffer of uniform buffers.
+	// FIXME: This could be optimized to be a single memory block if it was possible for RD to create views into a particular memory range of a UBO.
+	for (uint32_t i = 0; i < FFX_UBO_RING_BUFFER_SIZE; i++) {
+		scratch.ubo_ring_buffer[i] = render_device()->uniform_buffer_create(FFX_BUFFER_SIZE);
+		ERR_FAIL_COND_V(!scratch.ubo_ring_buffer[i].is_valid(), FFX_ERROR_BACKEND_API_ERROR);
+	}
+
+	return FFX_OK;
+}
+
+static FfxErrorCode get_device_capabilities_rd(FfxInterface *p_backend_interface, FfxDeviceCapabilities *p_out_device_capabilities) {
+	*p_out_device_capabilities = FFXCommon::get_device_capabilities();
+
+	return FFX_OK;
+}
+
+static FfxErrorCode destroy_backend_context_rd(FfxInterface *p_backend_interface, FfxUInt32 effect_context_id) {
+	FFXCommon::Scratch &scratch = *reinterpret_cast<FFXCommon::Scratch *>(p_backend_interface->scratchBuffer);
+	if (scratch.staging_constant_buffer) {
+		memfree(scratch.staging_constant_buffer);
+	}
+
+	for (uint32_t i = 0; i < FFX_UBO_RING_BUFFER_SIZE; i++) {
+		render_device()->free_rid(scratch.ubo_ring_buffer[i]);
+	}
+
+	return FFX_OK;
+}
+
+static FfxErrorCode create_resource_rd(FfxInterface *p_backend_interface, const FfxCreateResourceDescription *p_create_resource_description, FfxUInt32 effect_context_id, FfxResourceInternal *p_out_resource) {
+	// FSR2's base implementation won't issue a call to create a heap type that isn't just default on its own,
+	// so we can safely ignore it as RD does not expose this concept.
+	ERR_FAIL_COND_V(p_create_resource_description->heapType != FFX_HEAP_TYPE_DEFAULT, FFX_ERROR_INVALID_ARGUMENT);
+
+	RenderingDevice *rd = render_device();
+	FFXCommon::Scratch &scratch = *reinterpret_cast<FFXCommon::Scratch *>(p_backend_interface->scratchBuffer);
+	FfxResourceDescription res_desc = p_create_resource_description->resourceDescription;
+
+	// FSR2's base implementation never requests buffer creation.
+	ERR_FAIL_COND_V(res_desc.type != FFX_RESOURCE_TYPE_TEXTURE1D && res_desc.type != FFX_RESOURCE_TYPE_TEXTURE2D && res_desc.type != FFX_RESOURCE_TYPE_TEXTURE3D, FFX_ERROR_INVALID_ARGUMENT);
+
+	if (res_desc.mipCount == 0) {
+		// Mipmap count must be derived from the resource's dimensions.
+		res_desc.mipCount = uint32_t(1 + std::floor(std::log2(MAX(MAX(res_desc.width, res_desc.height), res_desc.depth))));
+	}
+
+	TypedArray<PackedByteArray> initial_data;
+	if (p_create_resource_description->initData.type != FFX_RESOURCE_INIT_DATA_TYPE_UNINITIALIZED) {
+		PackedByteArray byte_array;
+		byte_array.resize(p_create_resource_description->initData.size);
+		switch (p_create_resource_description->initData.type) {
+			case FFX_RESOURCE_INIT_DATA_TYPE_BUFFER:
+				memcpy(byte_array.ptrw(), p_create_resource_description->initData.buffer, p_create_resource_description->initData.size);
+				break;
+			case FFX_RESOURCE_INIT_DATA_TYPE_VALUE:
+				for (uint32_t offset = 0; offset < p_create_resource_description->initData.size; offset++) {
+                    byte_array.ptrw()[offset] = reinterpret_cast<const uint8_t *>(&p_create_resource_description->initData.value)[offset % 4];
+                }
+				break;
+			default:
+				ERR_PRINT("Invalid initial data type. ");
+				break;
+		}
+		initial_data.push_back(byte_array);
+	}
+
+	Ref<RDTextureFormat> texture_format; texture_format.instantiate();
+	texture_format->set_texture_type(FFXCommon::ffx_resource_type_to_rd_texture_type(res_desc.type));
+	texture_format->set_format(FFXCommon::ffx_surface_format_to_rd_format(res_desc.format));
+	texture_format->set_usage_bits(ffx_usage_to_rd_usage_flags(p_create_resource_description->resourceDescription.usage));
+	texture_format->set_width(res_desc.width);
+	texture_format->set_height(res_desc.height);
+	texture_format->set_depth(res_desc.depth);
+	texture_format->set_mipmaps(res_desc.mipCount);
+	texture_format->set_is_discardable(true);
+
+	RID texture = rd->texture_create(texture_format, Ref<RDTextureView>(memnew(RDTextureView)), initial_data);
+	ERR_FAIL_COND_V(!texture.is_valid(), FFX_ERROR_BACKEND_API_ERROR);
+
+	rd->set_resource_name(texture, String(p_create_resource_description->name));
+
+	// Add the resource to the storage and use the internal index to reference it.
+	p_out_resource->internalIndex = scratch.resources.add(texture, false, p_create_resource_description->id, res_desc);
+
+	return FFX_OK;
+}
+
+static FfxErrorCode register_resource_rd(FfxInterface *p_backend_interface, const FfxResource *p_in_resource, FfxUInt32 effect_context_id, FfxResourceInternal *p_out_resource) {
+	if (p_in_resource->resource == nullptr) {
+		// Null resource case.
+		p_out_resource->internalIndex = -1;
+		return FFX_OK;
+	}
+
+	FFXCommon::Scratch &scratch = *reinterpret_cast<FFXCommon::Scratch *>(p_backend_interface->scratchBuffer);
+	const RID &rid = *reinterpret_cast<const RID *>(p_in_resource->resource);
+	ERR_FAIL_COND_V(!rid.is_valid(), FFX_ERROR_INVALID_ARGUMENT);
+
+	// Add the resource to the storage and use the internal index to reference it.
+	p_out_resource->internalIndex = scratch.resources.add(rid, true, FFXCommon::RESOURCE_ID_DYNAMIC, p_in_resource->description);
+
+	return FFX_OK;
+}
+
+static FfxErrorCode unregister_resources_rd(FfxInterface *p_backend_interface, FfxCommandList p_command_list, FfxUInt32 effect_context_id) {
+	FFXCommon::Scratch &scratch = *reinterpret_cast<FFXCommon::Scratch *>(p_backend_interface->scratchBuffer);
+	LocalVector<uint32_t> dynamic_list_copy;
+	for (uint32_t i : scratch.resources.dynamic_list) dynamic_list_copy.push_back(i);
+	for (uint32_t i : dynamic_list_copy) {
+		scratch.resources.remove(i);
+	}
+
+	return FFX_OK;
+}
+
+static FfxResourceDescription get_resource_description_rd(FfxInterface *p_backend_interface, FfxResourceInternal p_resource) {
+	if (p_resource.internalIndex != -1) {
+		FFXCommon::Scratch &scratch = *reinterpret_cast<FFXCommon::Scratch *>(p_backend_interface->scratchBuffer);
+		return scratch.resources.descriptions[p_resource.internalIndex];
+	} else {
+		return {};
+	}
+}
+
+static FfxErrorCode destroy_resource_rd(FfxInterface *p_backend_interface, FfxResourceInternal p_resource, FfxUInt32 effect_context_id) {
+	if (p_resource.internalIndex != -1) {
+		FFXCommon::Scratch &scratch = *reinterpret_cast<FFXCommon::Scratch *>(p_backend_interface->scratchBuffer);
+		if (scratch.resources.rids[p_resource.internalIndex].is_valid()) {
+			render_device()->free_rid(scratch.resources.rids[p_resource.internalIndex]);
+			scratch.resources.remove(p_resource.internalIndex);
+		}
+	}
+
+	return FFX_OK;
+}
+
+static FfxErrorCode create_pipeline_rd(FfxInterface *p_backend_interface, FfxEffect p_effect, FfxPass p_pass, uint32_t p_permutation_options, const FfxPipelineDescription *p_pipeline_description, FfxUInt32 p_effect_context_id, FfxPipelineState *p_out_pipeline) {
+	FFXCommon::Scratch &scratch = *reinterpret_cast<FFXCommon::Scratch *>(p_backend_interface->scratchBuffer);
+	FFXCommon::Device &device = *reinterpret_cast<FFXCommon::Device *>(scratch.device);
+
+	FFXCommon::Pass &effect_pass = device.passes[p_pass];
+
+	if (!effect_pass.pipeline.pipeline_rid.is_valid()) {
+		// Create pipeline for the device if it hasn't been created yet.
+		effect_pass.root_signature.shader_rid = effect_pass.shader;
+		ERR_FAIL_COND_V(!effect_pass.root_signature.shader_rid.is_valid(), FFX_ERROR_BACKEND_API_ERROR);
+
+		effect_pass.pipeline.pipeline_rid = render_device()->compute_pipeline_create(effect_pass.root_signature.shader_rid);
+		ERR_FAIL_COND_V(!effect_pass.pipeline.pipeline_rid.is_valid(), FFX_ERROR_BACKEND_API_ERROR);
+	}
+
+#ifdef DEV_ENABLED
+	memcpy(p_out_pipeline->name, p_pipeline_description->name, sizeof(p_out_pipeline->name));
+#endif
+
+	// While this is not their intended use, we use the pipeline and root signature pointers to store the
+	// RIDs to the pipeline and shader that RD needs for the compute pipeline.
+	p_out_pipeline->pipeline = reinterpret_cast<FfxPipeline>(&effect_pass.pipeline);
+	p_out_pipeline->rootSignature = reinterpret_cast<FfxRootSignature>(&effect_pass.root_signature);
+
+	// FSR doesn't use any buffers
+	p_out_pipeline->srvBufferCount = 0;
+	p_out_pipeline->srvTextureCount = effect_pass.sampled_texture_bindings.size();
+	ERR_FAIL_COND_V(p_out_pipeline->srvTextureCount + p_out_pipeline->srvBufferCount > FFX_MAX_NUM_SRVS, FFX_ERROR_OUT_OF_RANGE);
+	memcpy(p_out_pipeline->srvTextureBindings, effect_pass.sampled_texture_bindings.ptr(), sizeof(FfxResourceBinding) * p_out_pipeline->srvTextureCount);
+
+	// FSR doesn't use any buffers
+	p_out_pipeline->uavBufferCount = 0;
+	p_out_pipeline->uavTextureCount = effect_pass.storage_texture_bindings.size();
+	ERR_FAIL_COND_V(p_out_pipeline->uavTextureCount + p_out_pipeline->uavBufferCount > FFX_MAX_NUM_UAVS, FFX_ERROR_OUT_OF_RANGE);
+	memcpy(p_out_pipeline->uavTextureBindings, effect_pass.storage_texture_bindings.ptr(), sizeof(FfxResourceBinding) * p_out_pipeline->uavTextureCount);
+
+	p_out_pipeline->constCount = effect_pass.uniform_bindings.size();
+	ERR_FAIL_COND_V(p_out_pipeline->constCount > FFX_MAX_NUM_CONST_BUFFERS, FFX_ERROR_OUT_OF_RANGE);
+	memcpy(p_out_pipeline->constantBufferBindings, effect_pass.uniform_bindings.ptr(), sizeof(FfxResourceBinding) * p_out_pipeline->constCount);
+
+	if (p_effect == FFX_EFFECT_FSR2) {
+		bool low_resolution_mvs = (p_pipeline_description->contextFlags & FFX_FSR2_ENABLE_DISPLAY_RESOLUTION_MOTION_VECTORS) == 0;
+
+		if (p_pass == FFX_FSR2_PASS_ACCUMULATE || p_pass == FFX_FSR2_PASS_ACCUMULATE_SHARPEN) {
+			// Change the binding for motion vectors in this particular pass if low resolution MVs are used.
+			if (low_resolution_mvs) {
+				FfxResourceBinding &binding = p_out_pipeline->srvTextureBindings[2];
+				wcscpy_s(binding.name, L"r_dilated_motion_vectors");
+			}
+		}
+	}
+
+	if (p_effect == FFX_EFFECT_FSR3UPSCALER) {
+		bool low_resolution_mvs = (p_pipeline_description->contextFlags & FFX_FSR3UPSCALER_ENABLE_DISPLAY_RESOLUTION_MOTION_VECTORS) == 0;
+
+		if (p_pass == FFX_FSR3UPSCALER_PASS_ACCUMULATE || p_pass == FFX_FSR3UPSCALER_PASS_ACCUMULATE_SHARPEN) {
+			// Change the binding for motion vectors in this particular pass if low resolution MVs are used.
+			if (low_resolution_mvs) {
+				FfxResourceBinding &binding = p_out_pipeline->srvTextureBindings[2];
+				wcscpy_s(binding.name, L"r_dilated_motion_vectors");
+			}
+		}
+	}
+
+	return FFX_OK;
+}
+
+static FfxErrorCode destroy_pipeline_rd(FfxInterface *p_backend_interface, FfxPipelineState *p_pipeline, FfxUInt32 p_effect_context_id) {
+	// We don't want to destroy pipelines when the FSR2 API deems it necessary as it'll do so whenever the context is destroyed.
+
+	return FFX_OK;
+}
+
+static FfxErrorCode schedule_gpu_job_rd(FfxInterface *p_backend_interface, const FfxGpuJobDescription *p_job) {
+	ERR_FAIL_NULL_V(p_backend_interface, FFX_ERROR_INVALID_ARGUMENT);
+	ERR_FAIL_NULL_V(p_job, FFX_ERROR_INVALID_ARGUMENT);
+
+	FFXCommon::Scratch &scratch = *reinterpret_cast<FFXCommon::Scratch *>(p_backend_interface->scratchBuffer);
+	scratch.gpu_jobs.push_back(*p_job);
+
+	return FFX_OK;
+}
+
+static FfxErrorCode execute_gpu_job_clear_float_rd(FFXCommon::Scratch &p_scratch, const FfxClearFloatJobDescription &p_job, FfxUInt32 p_effect_context_id) {
+	RID resource = p_scratch.resources.rids[p_job.target.internalIndex];
+	FfxResourceDescription &desc = p_scratch.resources.descriptions[p_job.target.internalIndex];
+
+	ERR_FAIL_COND_V_MSG(desc.type == FFX_RESOURCE_TYPE_BUFFER, FFX_ERROR_INVALID_ARGUMENT, "Cannot clear a buffer resource.");
+
+	Color color(p_job.color[0], p_job.color[1], p_job.color[2], p_job.color[3]);
+	render_device()->texture_clear(resource, color, 0, desc.mipCount, 0, 1);
+
+	return FFX_OK;
+}
+
+static FfxErrorCode execute_gpu_job_copy_rd(FFXCommon::Scratch &p_scratch, const FfxCopyJobDescription &p_job, FfxUInt32 p_effect_context_id) {
+	RID src = p_scratch.resources.rids[p_job.src.internalIndex];
+	RID dst = p_scratch.resources.rids[p_job.dst.internalIndex];
+	FfxResourceDescription &src_desc = p_scratch.resources.descriptions[p_job.src.internalIndex];
+	FfxResourceDescription &dst_desc = p_scratch.resources.descriptions[p_job.dst.internalIndex];
+
+	ERR_FAIL_COND_V(src_desc.type == FFX_RESOURCE_TYPE_BUFFER, FFX_ERROR_INVALID_ARGUMENT);
+	ERR_FAIL_COND_V(dst_desc.type == FFX_RESOURCE_TYPE_BUFFER, FFX_ERROR_INVALID_ARGUMENT);
+
+	for (uint32_t mip_level = 0; mip_level < src_desc.mipCount; mip_level++) {
+		render_device()->texture_copy(src, dst, Vector3(0, 0, 0), Vector3(0, 0, 0), Vector3(src_desc.width, src_desc.height, src_desc.depth), mip_level, mip_level, 0, 0);
+	}
+
+	return FFX_OK;
+}
+
+static FfxErrorCode execute_gpu_job_compute_rd(FFXCommon::Scratch &p_scratch, const FfxComputeJobDescription &p_job, FfxUInt32 p_effect_context_id) {
+
+
+	FFXCommon::RootSignature &root_signature = *reinterpret_cast<FFXCommon::RootSignature *>(p_job.pipeline.rootSignature);
+	ERR_FAIL_COND_V(!root_signature.shader_rid.is_valid(), FFX_ERROR_INVALID_ARGUMENT);
+
+	FFXCommon::Pipeline &backend_pipeline = *reinterpret_cast<FFXCommon::Pipeline *>(p_job.pipeline.pipeline);
+	ERR_FAIL_COND_V(!backend_pipeline.pipeline_rid.is_valid(), FFX_ERROR_INVALID_ARGUMENT);
+
+	TypedArray<RDUniform> compute_uniforms;
+	compute_uniforms.clear();
+
+	for (uint32_t i = 0; i < p_job.pipeline.srvTextureCount; i++) {
+		RID texture_rid = p_scratch.resources.rids[p_job.srvTextures[i].resource.internalIndex];
+		Ref<RDUniform> texture_uniform = make_uniform(RD::UNIFORM_TYPE_TEXTURE, p_job.pipeline.srvTextureBindings[i].slotIndex, texture_rid);
+		compute_uniforms.push_back(texture_uniform);
+	}
+
+	ERR_FAIL_COND_V_MSG(p_job.pipeline.srvBufferCount > 0, FFX_ERROR_BACKEND_API_ERROR, "Since FSR doesn't use buffers, SRV buffers are not supported.");
+
+	for (uint32_t i = 0; i < p_job.pipeline.uavTextureCount; i++) {
+		RID image_rid = p_scratch.resources.rids[p_job.uavTextures[i].resource.internalIndex];
+		Ref<RDUniform> storage_uniform; storage_uniform.instantiate();
+		storage_uniform->set_uniform_type( RD::UNIFORM_TYPE_IMAGE);
+		storage_uniform->set_binding(p_job.pipeline.uavTextureBindings[i].slotIndex);
+
+		int mipCount = p_scratch.resources.descriptions[p_job.uavTextures[i].resource.internalIndex].mipCount;
+		if (mipCount > 1) {
+			LocalVector<RID> &mip_slice_rids = p_scratch.resources.mip_slice_rids[p_job.uavTextures[i].resource.internalIndex];
+			if (mip_slice_rids.is_empty()) {
+				mip_slice_rids.resize(mipCount);
+			}
+
+			ERR_FAIL_COND_V(p_job.uavTextures[i].mip >= mip_slice_rids.size(), FFX_ERROR_INVALID_ARGUMENT);
+
+			if (!mip_slice_rids[p_job.uavTextures[i].mip].is_valid()) {
+				mip_slice_rids[p_job.uavTextures[i].mip] = render_device()->texture_create_shared_from_slice(Ref<RDTextureView>(memnew(RDTextureView)), image_rid, 0, p_job.uavTextures[i].mip);
+			}
+
+			ERR_FAIL_COND_V(!mip_slice_rids[p_job.uavTextures[i].mip].is_valid(), FFX_ERROR_BACKEND_API_ERROR);
+
+			storage_uniform->add_id(mip_slice_rids[p_job.uavTextures[i].mip]);
+		} else {
+			storage_uniform->add_id(image_rid);
+		}
+
+		compute_uniforms.push_back(storage_uniform);
+	}
+
+	ERR_FAIL_COND_V_MSG(p_job.pipeline.uavBufferCount > 0, FFX_ERROR_BACKEND_API_ERROR, "Since FSR doesn't use buffers, UAV buffers are not supported.");
+
+	for (uint32_t i = 0; i < p_job.pipeline.constCount; i++) {
+		RID buffer_rid = p_scratch.ubo_ring_buffer[p_scratch.ubo_ring_buffer_index];
+		p_scratch.ubo_ring_buffer_index = (p_scratch.ubo_ring_buffer_index + 1) % FFX_UBO_RING_BUFFER_SIZE;
+
+		PackedByteArray constants;
+        constants.resize(p_job.cbs[i].num32BitEntries * sizeof(uint32_t));
+        memcpy(constants.ptrw(), p_job.cbs[i].data, constants.size());
+        render_device()->buffer_update(buffer_rid, 0, constants.size(), constants);
+
+		Ref<RDUniform> buffer_uniform = make_uniform(RD::UNIFORM_TYPE_UNIFORM_BUFFER, p_job.pipeline.constantBufferBindings[i].slotIndex, buffer_rid);
+		compute_uniforms.push_back(buffer_uniform);
+	}
+
+	FFXCommon::Device &device = *reinterpret_cast<FFXCommon::Device *>(p_scratch.device);
+
+	if (p_scratch.effect_type == FFX_EFFECT_FSR1) {
+		Ref<RDUniform> u_linear_clamp_sampler = make_uniform(RD::UniformType::UNIFORM_TYPE_SAMPLER, 100, device.linear_clamp_sampler);
+		compute_uniforms.push_back(u_linear_clamp_sampler);
+	} else if (p_scratch.effect_type == FFX_EFFECT_FSR2 || p_scratch.effect_type == FFX_EFFECT_FSR3UPSCALER) {
+		Ref<RDUniform> u_point_clamp_sampler = make_uniform(RD::UniformType::UNIFORM_TYPE_SAMPLER, 100, device.point_clamp_sampler);
+		Ref<RDUniform> u_linear_clamp_sampler = make_uniform(RD::UniformType::UNIFORM_TYPE_SAMPLER, 101, device.linear_clamp_sampler);
+		compute_uniforms.push_back(u_point_clamp_sampler);
+		compute_uniforms.push_back(u_linear_clamp_sampler);
+	}
+
+	RID uniform_set = UniformSetCacheRD::get_cache(root_signature.shader_rid, 0, compute_uniforms);
+	ERR_FAIL_COND_V(!uniform_set.is_valid(), FFX_ERROR_BACKEND_API_ERROR);
+	int64_t compute_list = render_device()->compute_list_begin();
+	render_device()->compute_list_bind_compute_pipeline(compute_list, backend_pipeline.pipeline_rid);
+	render_device()->compute_list_bind_uniform_set(compute_list, uniform_set, 0);
+	render_device()->compute_list_dispatch(compute_list, p_job.dimensions[0], p_job.dimensions[1], p_job.dimensions[2]);
+	render_device()->compute_list_end();
+	p_scratch.compute_dispatch_count++;
+
+	return FFX_OK;
+}
+
+static FfxErrorCode execute_gpu_jobs_rd(FfxInterface *p_backend_interface, FfxCommandList p_command_list, FfxUInt32 p_effect_context_id) {
+	ERR_FAIL_NULL_V(p_backend_interface, FFX_ERROR_INVALID_ARGUMENT);
+
+	FFXCommon::Scratch &scratch = *reinterpret_cast<FFXCommon::Scratch *>(p_backend_interface->scratchBuffer);
+	FfxErrorCode error_code = FFX_OK;
+	for (const FfxGpuJobDescription &job : scratch.gpu_jobs) {
+		switch (job.jobType) {
+			case FFX_GPU_JOB_CLEAR_FLOAT: {
+				error_code = execute_gpu_job_clear_float_rd(scratch, job.clearJobDescriptor, p_effect_context_id);
+			} break;
+			case FFX_GPU_JOB_COPY: {
+				error_code = execute_gpu_job_copy_rd(scratch, job.copyJobDescriptor, p_effect_context_id);
+			} break;
+			case FFX_GPU_JOB_COMPUTE: {
+				error_code = execute_gpu_job_compute_rd(scratch, job.computeJobDescriptor, p_effect_context_id);
+			} break;
+			case FFX_GPU_JOB_DISCARD: {
+				// Discard is a DX12-only concept, so nothing has to be done.
+				// The DX12 backend handles this automatically.
+			} break;
+			default: {
+				error_code = FFX_ERROR_INVALID_ARGUMENT;
+			} break;
+		}
+
+		if (error_code != FFX_OK) {
+			scratch.gpu_jobs.clear();
+#ifdef DEV_ENABLED
+			ERR_PRINT(vformat("FFX GPU job failed with code %d", error_code));
+#endif
+			return error_code;
+		}
+	}
+
+	scratch.gpu_jobs.clear();
+
+	return FFX_OK;
+}
+
+static FfxErrorCode stage_constant_buffer_data_rd(FfxInterface *p_backend_interface, void *p_data, FfxUInt32 p_size, FfxConstantBuffer *p_constant_buffer) {
+	ERR_FAIL_NULL_V(p_backend_interface, FFX_ERROR_INVALID_POINTER);
+	ERR_FAIL_NULL_V(p_data, FFX_ERROR_INVALID_POINTER);
+	ERR_FAIL_NULL_V(p_constant_buffer, FFX_ERROR_INVALID_POINTER);
+
+	FFXCommon::Scratch &scratch = *reinterpret_cast<FFXCommon::Scratch *>(p_backend_interface->scratchBuffer);
+	if (scratch.staging_constant_buffer_base + FFX_ALIGN_UP(p_size, 256) >= FFX_STAGING_CONSTANT_BUFFER_SIZE) {
+		scratch.staging_constant_buffer_base = 0;
+	}
+
+	void *dst = scratch.staging_constant_buffer + scratch.staging_constant_buffer_base;
+	memcpy(dst, p_data, p_size);
+
+	p_constant_buffer->data = (uint32_t *)dst;
+	p_constant_buffer->num32BitEntries = p_size / sizeof(uint32_t);
+	scratch.staging_constant_buffer_base += FFX_ALIGN_UP(p_size, 256);
+
+	return FFX_OK;
+}
+
+FfxResource FFXCommon::get_resource_rd(RID *p_rid, const wchar_t *p_name) {
+	FfxResource res = {};
+	if (!p_rid->is_valid()) {
+		return res;
+	}
+
+	wcscpy_s(res.name, p_name);
+
+	Ref<RDTextureFormat> texture_format = render_device()->texture_get_format(*p_rid);
+	res.description.type = rd_texture_type_to_ffx_resource_type(texture_format->get_texture_type());
+	res.description.format = rd_format_to_ffx_surface_format(texture_format->get_format());
+	res.description.width = texture_format->get_width();
+	res.description.height = texture_format->get_height();
+	res.description.depth = texture_format->get_depth();
+	res.description.mipCount = texture_format->get_mipmaps();
+	res.description.flags = FFX_RESOURCE_FLAGS_NONE;
+	res.resource = reinterpret_cast<void *>(p_rid);
+
+	return res;
+}
+
+FfxDeviceCapabilities FFXCommon::get_device_capabilities() {
+	FfxDeviceCapabilities capabilities = {};
+	capabilities.maximumSupportedShaderModel = FFX_SHADER_MODEL_6_7;
+	capabilities.waveLaneCountMin = 32;
+	capabilities.waveLaneCountMax = 32;
+	// SUPPORTS_HALF_FLOAT is internal and absent from extension_api.json.
+	// Use the supported full-precision shader permutation for this backend.
+	capabilities.fp16Supported = false;
+	capabilities.raytracingSupported = false;
+
+	return capabilities;
+}
+
+void FFXCommon::create_ffx_interface(FfxInterface *p_interface, Scratch *p_scratch, Device *p_device) {
+	p_interface->fpGetSDKVersion = get_sdk_version_rd;
+	p_interface->fpCreateBackendContext = create_backend_context_rd;
+	p_interface->fpGetDeviceCapabilities = get_device_capabilities_rd;
+	p_interface->fpDestroyBackendContext = destroy_backend_context_rd;
+	p_interface->fpCreateResource = create_resource_rd;
+	p_interface->fpRegisterResource = register_resource_rd;
+	p_interface->fpUnregisterResources = unregister_resources_rd;
+	p_interface->fpGetResourceDescription = get_resource_description_rd;
+	p_interface->fpDestroyResource = destroy_resource_rd;
+	p_interface->fpCreatePipeline = create_pipeline_rd;
+	p_interface->fpDestroyPipeline = destroy_pipeline_rd;
+	p_interface->fpScheduleGpuJob = schedule_gpu_job_rd;
+	p_interface->fpExecuteGpuJobs = execute_gpu_jobs_rd;
+	p_interface->fpStageConstantBufferDataFunc = stage_constant_buffer_data_rd;
+	p_interface->scratchBuffer = p_scratch;
+	p_interface->scratchBufferSize = sizeof(*p_scratch);
+
+	p_interface->device = p_device;
+}
+
+RID FFXCommon::create_clamp_sampler(RD::SamplerFilter filter) {
+	Ref<RDSamplerState> state; state.instantiate();
+	state->set_mag_filter(filter);
+	state->set_min_filter(filter);
+	state->set_repeat_u(RD::SAMPLER_REPEAT_MODE_CLAMP_TO_EDGE);
+	state->set_repeat_v(RD::SAMPLER_REPEAT_MODE_CLAMP_TO_EDGE);
+	state->set_repeat_w(RD::SAMPLER_REPEAT_MODE_CLAMP_TO_EDGE);
+	state->set_min_lod(-1000.0f);
+	state->set_max_lod(1000.0f);
+	state->set_anisotropy_max(1.0);
+
+	RID sampler = render_device()->sampler_create(state);
+	ERR_FAIL_COND_V(!sampler.is_valid(), RID());
+	return sampler;
+}
