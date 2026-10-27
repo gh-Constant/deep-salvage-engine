@@ -1,62 +1,59 @@
-# FSR 3.1.4 GDExtension and Temporal Artifact Lab
+# Built-in FSR3 companion demo and packaging
 
-This companion addon implements source FSR 3.1.4 outside the Godot renderer.
-The custom editor in this repository exposes the experimental ViewportUpscaler
-API and the additional temporal metadata needed by the addon. This is not a
-standalone addon for stock Godot releases.
+On branch `fsr3-builtin`, FSR 3.1.4 is compiled into `modules/fsr3/`.
+This folder keeps its historical name so existing workspace paths remain valid.
+The old extension source is reference material; it is not loaded or packaged
+with the built-in editor. The original extension remains on `fsr3-custom-editor`.
 
-Native Linux x86_64, Forward+, Vulkan is the primary tested configuration.
-The demo defaults to source FSR 3.1.4 on Linux. No frame generation is included.
-Ghosting/image-quality changes are outside this implementation's scope.
+See [the native module guide](../../modules/fsr3/README.md) for configuration,
+optional external Vulkan runtimes, migration, builds, tests and provenance.
+There is no per-project addon, autoload or godot-cpp build requirement.
 
-## Build from this repository
+## Run the artifact lab
 
-At the repository root:
+From the engine repository root:
 
 ```sh
-git submodule update --init --recursive
 scons platform=linuxbsd target=editor dev_build=no debug_symbols=no -j6
-cd misc/fsr3-gdextension
-python3 tools/generate_api.py --engine ../../bin/godot.linuxbsd.editor.x86_64
-scons platform=linux arch=x86_64 target=template_debug -j6
-scons platform=linux arch=x86_64 target=template_release -j6
-python3 tools/package_addon.py --platform linux
-../../bin/godot.linuxbsd.editor.x86_64 --editor --path demo --rendering-method forward_plus --rendering-driver vulkan
+bin/godot.linuxbsd.editor.x86_64 --editor --path misc/fsr3-gdextension/demo --rendering-method forward_plus --rendering-driver vulkan
 ```
 
-Let the editor import the project, then press F5. The HUD reports actual source
-dispatches and GPU passes. Controls: 1 Quality-style 0.67, 2 Native AA, 3 basic
-compute, 4 bilinear, 5 scale 0.5, 6 native raster; F1–F4 station close-ups, F5
-overview, Space pause, C camera motion, R reset history. See demo/ARTIFACT_LAB.md.
+After import, press F5. The HUD reports actual source dispatches and GPU passes.
+Controls: 1 Quality-style 0.67, 2 Native AA, 3 basic compute, 4 bilinear,
+5 scale 0.5, 6 native raster; F1–F4 close-ups, F5 overview, Space pause,
+C camera motion, R history reset. See `demo/ARTIFACT_LAB.md`.
+The project enables built-in FSR3 in its rendering settings and has no addons folder.
 
-For another project, extract `build/fsr3-linux-x86_64.zip` into its root and enable
-the **FidelityFX Upscaling** editor plugin. The autoload applies the viewport
-settings without manually editing project scripts.
-
-## Verification
-
-From this directory, with a display and GPU available:
+## Validate
 
 ```sh
-python3 tests/run_gpu_tests.py --engine ../../bin/godot.linuxbsd.editor.x86_64
-python3 tests/run_gpu_tests.py --engine ../../bin/godot.linuxbsd.editor.x86_64 --library release
-python3 tests/test_fidelityfx_library.py
-python3 tests/test_binary_backend.py --engine ../../bin/godot.linuxbsd.editor.x86_64
+python3 modules/fsr3/tests/run_builtin_test.py
+python3 modules/fsr3/tests/test_fidelityfx_library.py
+python3 modules/fsr3/tests/test_binary_backend.py --engine bin/godot.linuxbsd.editor.x86_64
+python3 misc/fsr3-gdextension/tests/run_gpu_tests.py --engine bin/godot.linuxbsd.editor.x86_64
+python3 modules/fsr3/tests/run_export_test.py
 ```
 
-The source suite checks actual GPU passes, Quality/Native AA/0.5 scaling, motion,
-resizing, upscaler switching, and reset/sharpness changes. The external native
-command test uses an explicitly synthetic provider, not AMD FSR4.
+The export test requires a matching native Linux release template built with
+`target=template_release`. Older extension-branch templates lack the native classes.
+The legacy `--library release` addon test and addon installer tests are for the
+old branch; use the native export test to validate built-in release runtimes.
 
-The optional FidelityFXUpscaler class dynamically loads compatible public-API
-Vulkan runtimes on Windows; no AMD Windows DLL, custom FSR4 bridge, driver binary,
-Wine runtime or portable compiler is distributed here. The native Linux addon
-rejects Windows PE DLLs. Native Linux FSR4 is not supported by this release.
+## Package local builds
 
-## Provenance and engine dependency
+After building Linux and Windows editors and committing the source:
 
-See ../../FSR3_EDITOR.md for source links, pinned revisions, additional engine
-changes and release instructions. Algorithm source/notices are retained under
-thirdparty/amd-ffx; Godot wrappers/shaders were adapted from HydrogenC's Godot
-FSR3 implementation. godot-cpp is a pinned submodule. No generated extension API,
-compiled library, object file, editor binary or test capture is versioned.
+```sh
+python3 misc/fsr3-gdextension/tools/package_release.py
+```
+
+This writes built-in editor ZIPs, an addon-free demo, complete source ZIP/tar.gz
+archives and SHA-256 checksums to `bin/fsr3-builtin-release/`.
+The source archives include the pinned legacy godot-cpp checkout for completeness;
+compiling the native engine/module does not require those bindings.
+This packager does not yet build/package all export templates or publish a GitHub
+release. A unified build/publish workflow remains separate work.
+
+The native source backend is GPU-tested on Linux Forward+/Vulkan. Windows editor
+binaries are cross-compiled; native Windows GPU execution is not validated here.
+No AMD runtime/driver DLLs, native Linux FSR4, frame generation or Wine are included.

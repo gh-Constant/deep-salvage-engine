@@ -1,0 +1,28 @@
+#!/usr/bin/env python
+from misc.utility.scons_hints import *
+
+from pathlib import Path
+
+import shader_builders
+
+Import("env")
+Import("env_modules")
+
+env_fsr3 = env_modules.Clone()
+env_fsr3.Prepend(CPPPATH=[Dir(".").abspath, "#thirdparty/vulkan"])
+# The engine's FSR2 has its own SDK assertion symbols. Keep the two SDKs isolated.
+env_fsr3.Append(CPPDEFINES=["FFX_GCC", ("ffxAssertReport", "godot_fsr3_assert_report"),
+                          ("ffxAssertSetPrintingCallback", "godot_fsr3_assert_set_printing_callback")])
+headers = Glob("shaders/fsr3/*.glsl") + Glob("shaders/*.glsl")
+headers += [str(path) for path in sorted(Path(Dir("#thirdparty/amd-ffx").abspath).rglob("*"))
+            if path.suffix in (".h", ".glsl")]
+generated = env_fsr3.CommandNoCache("shaders.gen.h", headers, env.Run(shader_builders.generate))
+objects = []
+env_fsr3.add_source_files(objects, "*.cpp")
+env.Depends(objects, generated)
+env.modules_sources += objects
+
+vendor = env_fsr3.Clone()
+vendor.disable_warnings()
+vendor.add_source_files(env.modules_sources, ["#thirdparty/amd-ffx/" + name for name in
+    ["ffx_fsr3upscaler.cpp", "ffx_object_management.cpp", "ffx_assert.cpp", "ffx_message.cpp"]])

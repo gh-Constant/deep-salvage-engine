@@ -11,7 +11,7 @@ var output_directory := OS.get_environment("FSR3_TEST_OUTPUT")
 var label: Label
 
 func _ready() -> void:
-	fsr = FSR3Upscaler.new()
+	fsr = get_viewport().get_fsr3_upscaler() as FSR3Upscaler
 	simple = SimpleComputeUpscaler.new()
 	var environment := WorldEnvironment.new()
 	environment.environment = Environment.new()
@@ -53,12 +53,18 @@ func _ready() -> void:
 
 func select_upscaler(upscaler: ViewportUpscaler, scale: float) -> void:
 	var vp := get_viewport()
-	if upscaler is FSR3Upscaler:
-		upscaler.configure_scale(scale)
 	vp.use_taa = false
-	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_CUSTOM
-	vp.scaling_3d_scale = scale
-	vp.scaling_3d_custom_upscaler = upscaler
+	if upscaler is FSR3Upscaler and not upscaler is FidelityFXUpscaler:
+		vp.fsr3_backend = 0
+		vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR3
+		vp.scaling_3d_scale = scale
+		fsr = vp.get_fsr3_upscaler() as FSR3Upscaler
+	else:
+		if upscaler is FSR3Upscaler:
+			upscaler.configure_scale(scale)
+		vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_CUSTOM
+		vp.scaling_3d_scale = scale
+		vp.scaling_3d_custom_upscaler = upscaler
 
 func _process(_delta: float) -> void:
 	frame += 1
@@ -67,7 +73,7 @@ func _process(_delta: float) -> void:
 	moving.rotation.y = t
 	camera.position.x = sin(t * 0.35) * 1.5
 	camera.look_at(Vector3(0, 0.6, 0))
-	label.text = "FSR 3.1.4 extension | 1: Quality  2: Native AA  3: Basic compute  4: Bilinear\nFSR dispatches: %d | contexts: %d | failures: %d" % [fsr.get_dispatch_count(), fsr.get_context_count(), fsr.get_failure_count()]
+	label.text = "FSR 3.1.4 built-in | 1: Quality  2: Native AA  3: Basic compute  4: Bilinear\nFSR dispatches: %d | contexts: %d | failures: %d" % [fsr.get_dispatch_count(), fsr.get_context_count(), fsr.get_failure_count()]
 	if not automated:
 		return
 	if frame in [45, 90, 135, 180, 225, 270, 315]:

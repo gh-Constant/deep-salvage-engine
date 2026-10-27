@@ -41,11 +41,11 @@ void ViewportUpscaler::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("set_mipmap_bias", "mipmap_bias"), &ViewportUpscaler::set_mipmap_bias);
 	ClassDB::bind_method(D_METHOD("get_mipmap_bias"), &ViewportUpscaler::get_mipmap_bias);
-	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "mipmap_bias"), "set_mipmap_bias", "get_mipmap_bias");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "mipmap_bias"), "set_mipmap_bias", "get_mipmap_bias");
 
 	ClassDB::bind_method(D_METHOD("set_jitter_phase_count", "jitter_phase_count"), &ViewportUpscaler::set_jitter_phase_count);
 	ClassDB::bind_method(D_METHOD("get_jitter_phase_count"), &ViewportUpscaler::get_jitter_phase_count);
-	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "jitter_phase_count"), "set_jitter_phase_count", "get_jitter_phase_count");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "jitter_phase_count"), "set_jitter_phase_count", "get_jitter_phase_count");
 
 	GDVIRTUAL_BIND(_render_callback, "render_data");
 }
@@ -82,6 +82,9 @@ float ViewportUpscaler::get_mipmap_bias() const {
 
 void ViewportUpscaler::set_jitter_phase_count(uint32_t p_jitter_phase_count) {
 	jitter_phase_count = p_jitter_phase_count;
+	if (rid.is_valid()) {
+		RenderingServer::get_singleton()->viewport_upscaler_set_jitter_phase_count(rid, jitter_phase_count);
+	}
 }
 
 uint32_t ViewportUpscaler::get_jitter_phase_count() const {

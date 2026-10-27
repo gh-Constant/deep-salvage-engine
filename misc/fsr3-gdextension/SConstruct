@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 from pathlib import Path
 import sys
+if (Path('.').resolve().parent.parent / 'modules/fsr3').exists():
+    Exit('This branch builds FSR3 as an engine module. Build at the engine root; use fsr3-custom-editor for the old extension.')
 sys.path.insert(0, str(Path('tools').resolve()))
 from embed_shaders import generate
 generate()

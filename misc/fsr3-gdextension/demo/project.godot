@@ -24,3 +24,5 @@ window/size/window_height_override=540
 [rendering]
 
 renderer/rendering_method.mobile="forward_plus"
+scaling_3d/mode=7
+scaling_3d/scale=0.67

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="FSR3Upscaler" inherits="ViewportUpscaler" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		Built-in source FidelityFX Super Resolution 3.1.4 temporal upscaler.
+	</brief_description>
+	<description>
+		Uses GPU shaders compiled into the engine. Select [constant Viewport.SCALING_3D_MODE_FSR3] to let a viewport own and configure this resource automatically. Forward+ is required. A scale of 1.0 provides Native AA. No GDExtension or AMD runtime library is required. Frame generation is not implemented.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="configure_scale">
+			<return type="void" />
+			<param index="0" name="scale" type="float" />
+			<description>
+				Configures temporal jitter phases for the render scale and resets history. Managed viewports call this automatically.
+			</description>
+		</method>
+		<method name="get_context_count" qualifiers="const">
+			<return type="int" />
+			<description>
+				Returns the cumulative number of source contexts created, including recreation after resizing.
+			</description>
+		</method>
+		<method name="get_dispatch_count" qualifiers="const">
+			<return type="int" />
+			<description>
+				Returns the number of successful upscaling dispatches.
+			</description>
+		</method>
+		<method name="get_failure_count" qualifiers="const">
+			<return type="int" />
+			<description>
+				Returns the number of failed source or external GPU dispatches.
+			</description>
+		</method>
+		<method name="get_gpu_dispatch_count" qualifiers="const">
+			<return type="int" />
+			<description>
+				Returns the number of source compute passes submitted to the GPU.
+			</description>
+		</method>
+		<method name="reset_history">
+			<return type="void" />
+			<description>
+				Resets temporal history on the next rendered frame. Call after a camera cut or teleport.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="jitter_phase_count" type="int" setter="set_jitter_phase_count" getter="get_jitter_phase_count" overrides="ViewportUpscaler" default="17" />
+		<member name="mipmap_bias" type="float" setter="set_mipmap_bias" getter="get_mipmap_bias" overrides="ViewportUpscaler" default="1.0" />
+		<member name="requires_motion_vectors" type="bool" setter="set_requires_motion_vectors" getter="get_requires_motion_vectors" overrides="ViewportUpscaler" default="true" />
+		<member name="sharpness" type="float" setter="set_sharpness" getter="get_sharpness" default="0.2">
+			Source FSR3 sharpening strength from 0.0 to 1.0.
+		</member>
+	</members>
+</class>

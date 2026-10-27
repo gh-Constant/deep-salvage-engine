@@ -79,6 +79,12 @@
 				Returns the transform from the viewport's coordinate system to the embedder's coordinate system.
 			</description>
 		</method>
+		<method name="get_fsr3_upscaler" qualifiers="const">
+			<return type="ViewportUpscaler" />
+			<description>
+			Returns the managed built-in FSR3 resource while [member scaling_3d_mode] is [constant SCALING_3D_MODE_FSR3]. Use it for diagnostics or to reset history after a camera cut.
+			</description>
+		</method>
 		<method name="get_mouse_position" qualifiers="const">
 			<return type="Vector2" />
 			<description>
@@ -347,6 +353,17 @@
 		<member name="frame_generation" type="bool" setter="set_frame_generation" getter="get_frame_generation" default="false">
 			Enables Frame Generation technology on this viewport, if available. (currently DLSS 3.0 is supported - NVIDIA only)
 			[b]Note:[/b] DLSS Frame Generation requires NVIDIA Reflex to be running. If [member ProjectSettings.rendering/streamline/reflex_mode] is [code]0[/code], Reflex is automatically enabled in low latency mode for as long as frame generation is active. Frame generation is not enabled at all if Reflex is unavailable.
+		<member name="fsr3_allow_source_fallback" type="bool" setter="set_fsr3_allow_source_fallback" getter="is_fsr3_source_fallback_allowed" default="true">
+			Allow the external backend to fall back to built-in source FSR3. Enabled by default.
+		</member>
+		<member name="fsr3_backend" type="int" setter="set_fsr3_backend" getter="get_fsr3_backend" default="0">
+			Built-in FSR3 backend: 0 selects source FSR 3.1.4 (the default), 1 selects an external public-API Vulkan runtime.
+		</member>
+		<member name="fsr3_library_path" type="String" setter="set_fsr3_library_path" getter="get_fsr3_library_path" default="&quot;&quot;">
+			External runtime file used when [member fsr3_backend] is 1. The file must remain outside the PCK.
+		</member>
+		<member name="fsr3_preferred_version" type="String" setter="set_fsr3_preferred_version" getter="get_fsr3_preferred_version" default="&quot;&quot;">
+			Optional exact external provider name when [member fsr3_backend] is 1.
 		</member>
 		<member name="fsr_sharpness" type="float" setter="set_fsr_sharpness" getter="get_fsr_sharpness" default="0.2">
 			Determines how sharp the upscaled image will be when using the FSR upscaling mode. Sharpness halves with every whole number. Values go from 0.0 (sharpest) to 2.0. Values above 2.0 won't make a visible difference.
@@ -594,7 +611,10 @@
 		<constant name="SCALING_3D_MODE_CUSTOM" value="7" enum="Scaling3DMode">
 			Use a custom viewport upscaler for the viewport's 3D buffer. The amount of scaling can be set using [member scaling_3d_scale].
 		</constant>
-		<constant name="SCALING_3D_MODE_MAX" value="7" enum="Scaling3DMode">
+		<constant name="SCALING_3D_MODE_FSR3" value="8" enum="Scaling3DMode">
+			Built-in source FSR 3.1.4 temporal upscaling. Requires the fsr3 module and Forward+. A scale of 1.0 provides Native AA. No addon is required.
+		</constant>
+		<constant name="SCALING_3D_MODE_MAX" value="9" enum="Scaling3DMode">
 			Represents the size of the [enum Scaling3DMode] enum.
 		</constant>
 		<constant name="MSAA_DISABLED" value="0" enum="MSAA">

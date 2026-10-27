@@ -5,6 +5,8 @@ import argparse
 import zipfile
 
 root = Path(__file__).resolve().parents[1]
+if (root.parent.parent / 'modules/fsr3').exists():
+    raise SystemExit('FSR3 is built into this branch. Package the native editor/demo, or use fsr3-custom-editor for the old addon.')
 parser = argparse.ArgumentParser()
 parser.add_argument('--platform', choices=['linux','windows','all'], default='linux')
 parser.add_argument('--output', type=Path)

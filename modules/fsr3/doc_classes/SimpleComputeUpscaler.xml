@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="SimpleComputeUpscaler" inherits="ViewportUpscaler" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		Minimal built-in compute upscaler for testing custom viewport hooks.
+	</brief_description>
+	<description>
+		A diagnostic nearest-sample compute pass. It is not FSR and does not perform temporal reconstruction. Assign it to a viewport in [constant Viewport.SCALING_3D_MODE_CUSTOM].
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="get_dispatch_count" qualifiers="const">
+			<return type="int" />
+			<description>
+				Returns the number of successful upscaling dispatches.
+			</description>
+		</method>
+	</methods>
+</class>

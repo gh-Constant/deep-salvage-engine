@@ -1,15 +1,27 @@
-# Custom FSR3 editor
+# Built-in FSR3 custom editor
 
-This branch combines the experimental custom-upscaler API with a companion FSR
-3.1.4 GDExtension and diagnostic demo. The engine exposes general rendering APIs;
-the FSR algorithm and shaders remain in `misc/fsr3-gdextension`.
-The current upstream base is Godot 4.8 beta; the addon bindings are generated
-from this exact patched editor, rather than the older experimental 4.7 build.
+Branch `fsr3-builtin` is based on the updated `fsr3-custom-editor` branch,
+including upstream Godot master `e810f3f7af`. FSR 3.1.4 is now compiled into
+`modules/fsr3/` and is available through ordinary project and viewport settings.
+No per-project addon or autoload is required. The module is included in matching
+editor and export-template builds on Linux and Windows with 3D support.
 
-The branch is based on upstream Godot master at
-`c8256a8ecec068340753869e423dd478c84ef167`, incorporating the 24 upstream commits
-that were newer than the original local master when this branch was prepared.
-The original custom-upscaler and engine-integrated FSR3 worktrees were preserved.
+Select **Rendering → Scaling 3D → Mode → FSR 3.1.4** with Forward+.
+Use scale 0.67 for Quality-style upscaling or 1.0 for Native AA.
+See [modules/fsr3/README.md](modules/fsr3/README.md) for backend settings, migration,
+builds, tests and limitations. Remove the old FSR3 addon before opening an addon
+project with this branch; the old extension registers the same class names.
+
+The generic custom-upscaler hooks are retained. Native source and optional
+FidelityFX Vulkan runtime resources reuse them. Source is the default on both
+platforms. No external AMD DLL, private FSR4 bridge or frame generation is included.
+Native Linux FSR4 and automatic Adrenalin upgrades are not claimed.
+
+The former companion under `misc/fsr3-gdextension` retains historical extension
+sources for reference; current native backend development belongs in the module.
+Its demo now uses built-in FSR3 and has no addons directory. Updated packaging
+ships built-in editors and the standalone demo without extension libraries.
+The full automated build/publish pipeline is separate work.
 
 ## Sources and credits
 
@@ -38,30 +50,16 @@ The original custom-upscaler and engine-integrated FSR3 worktrees were preserved
   Godot/AMD/Khronos license notices are retained; see the companion's
   THIRD_PARTY_NOTICES.md and license files.
 
-## Additional engine changes
 
-Beyond the imported custom-upscaler proposal:
+## Engine integration
 
-1. Bind RenderSceneDataRD.get_temporal_upscaler_data(), exposing renderer jitter,
-   frame delta, camera near/far/FOV and unjittered reprojection.
-2. Guard the Custom-mode jitter lookup when no resource is assigned and retain
-   the previous upscaler until its replacement has been queued to the renderer.
-3. Expose RenderingDevice.native_compute_callback_add() and the Vulkan command
-   buffer handle for compatible external GPU runtimes, track image dependencies,
-   and retain captured callbacks/contexts until the frame's fence completes.
-   This third change is optional for source FSR3 and supports the binary backend.
+The fsr3 module registers native Resource classes and uses native RenderingDevice
+structures. Viewport provides an FSR3 mode mapped internally to the generic Custom
+renderer mode, owns a backend per viewport and updates jitter before scale changes.
+The managed resource is excluded from the serialized custom-resource property.
+External Vulkan contexts and loaded libraries remain retained until GPU completion.
+ViewportUpscaler property types and jitter forwarding are corrected for native use.
 
-The companion adds source/basic/binary upscaler classes, GPU resource/history
-management, normalized input metadata, plugin/autoload setup, shader embedding,
-an artifact-lab demo and meaningful integration tests. Its original engine shader
-logic is preserved; this is not an image-quality or ghosting fix.
-
-## Build and release
-
-Follow misc/fsr3-gdextension/README.md. Git source contains no editor binaries,
-generated API dumps, build caches, compiled addon libraries, test captures,
-Windows AMD driver DLLs or toolchain downloads. Release assets contain the tested
-Linux editor, ready-to-run demo/addon, licenses and checksums separately from Git.
-
-Linux FSR 3.1.4 / Forward+ / Vulkan is the release target. Native Linux FSR4 is
-not implemented. The experimental API is not compatible with stock Godot builds.
+Existing template-source checkouts and published releases are from the extension
+branch and are not updated by changing this source branch. Rebuild export templates
+from this branch before exporting a project using the built-in classes.

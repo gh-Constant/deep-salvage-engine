@@ -30,7 +30,7 @@ var spin_shapes: Array[Node3D] = []
 var light_material: StandardMaterial3D
 
 func _ready() -> void:
-	fsr = FidelityFXUpscaler.new() if OS.has_feature("windows") else FSR3Upscaler.new()
+	fsr = get_viewport().get_fsr3_upscaler() as FSR3Upscaler
 	simple = SimpleComputeUpscaler.new()
 	_build_environment()
 	_build_bays()
@@ -322,7 +322,7 @@ func _process(delta: float) -> void:
 	_update_camera(t)
 	var vp := get_viewport()
 	var active_name := "Native raster / 1.0" if is_equal_approx(vp.scaling_3d_scale, 1.0) else "Bilinear / %.2f scale" % vp.scaling_3d_scale
-	if vp.scaling_3d_custom_upscaler == fsr:
+	if vp.scaling_3d_mode == Viewport.SCALING_3D_MODE_FSR3 or vp.scaling_3d_custom_upscaler == fsr:
 		active_name = "FSR3 / %.2f scale" % vp.scaling_3d_scale
 	elif vp.scaling_3d_custom_upscaler == simple:
 		active_name = "Basic compute / %.2f scale" % vp.scaling_3d_scale

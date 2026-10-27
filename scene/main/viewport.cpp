@@ -31,6 +31,8 @@
 #include "viewport.h"
 #include "viewport.compat.inc"
 
+#include "core/os/os.h"
+
 STATIC_ASSERT_INCOMPLETE_TYPE(class, RenderingServer);
 
 #include "core/config/engine.h"
@@ -3898,7 +3900,7 @@ void Viewport::set_use_taa(bool p_use_taa) {
 		return;
 	}
 	use_taa = p_use_taa;
-	RS::get_singleton()->viewport_set_use_taa(viewport, p_use_taa);
+	RS::get_singleton()->viewport_set_use_taa(viewport, p_use_taa && scaling_3d_mode != SCALING_3D_MODE_FSR3);
 }
 
 bool Viewport::is_using_taa() const {
@@ -5125,17 +5127,28 @@ bool Viewport::is_using_xr() const {
 
 void Viewport::set_scaling_3d_mode(Scaling3DMode p_scaling_3d_mode) {
 	ERR_MAIN_THREAD_GUARD;
+	ERR_FAIL_INDEX(p_scaling_3d_mode, SCALING_3D_MODE_MAX);
+	if (p_scaling_3d_mode == SCALING_3D_MODE_FSR3 &&
+			(!ClassDB::can_instantiate("FSR3Upscaler") || OS::get_singleton()->get_current_rendering_method() != "forward_plus")) {
+		WARN_PRINT_ONCE_ED("Built-in FSR3 requires the fsr3 module and the Forward+ renderer. Using bilinear scaling.");
+		p_scaling_3d_mode = SCALING_3D_MODE_BILINEAR;
+	}
 	if (scaling_3d_mode == p_scaling_3d_mode) {
 		return;
 	}
-
-	if (p_scaling_3d_mode != SCALING_3D_MODE_CUSTOM && scaling_3d_custom_upscaler.is_valid()) {
-		set_scaling_3d_custom_upscaler(Ref<ViewportUpscaler>());
-	}
-
+	// Keep the old backend alive until its replacement is queued to the renderer.
+	Ref<ViewportUpscaler> keep_previous_alive = scaling_3d_custom_upscaler;
 	scaling_3d_mode = p_scaling_3d_mode;
-	RS::get_singleton()->viewport_set_scaling_3d_mode(viewport, (RSE::ViewportScaling3DMode)(int)p_scaling_3d_mode);
-
+	RSE::ViewportScaling3DMode render_mode = p_scaling_3d_mode == SCALING_3D_MODE_FSR3 ? RSE::VIEWPORT_SCALING_3D_MODE_CUSTOM : (RSE::ViewportScaling3DMode)(int)p_scaling_3d_mode;
+	RS::get_singleton()->viewport_set_scaling_3d_mode(viewport, render_mode);
+	RS::get_singleton()->viewport_set_use_taa(viewport, use_taa && p_scaling_3d_mode != SCALING_3D_MODE_FSR3);
+	if (p_scaling_3d_mode == SCALING_3D_MODE_FSR3) {
+		scaling_3d_scale = MIN(scaling_3d_scale, 1.0f);
+		RS::get_singleton()->viewport_set_scaling_3d_scale(viewport, scaling_3d_scale);
+		_update_fsr3_upscaler();
+	} else {
+		_set_scaling_3d_upscaler(Ref<ViewportUpscaler>());
+	}
 	notify_property_list_changed();
 }
 
@@ -5163,8 +5176,10 @@ void Viewport::set_scaling_3d_scale(float p_scaling_3d_scale) {
 	// Clamp to reasonable values that are actually useful.
 	// Values above 2.0 don't serve a practical purpose since the viewport
 	// isn't displayed with mipmaps.
-	scaling_3d_scale = CLAMP(p_scaling_3d_scale, 0.1, 2.0);
+	scaling_3d_scale = CLAMP(p_scaling_3d_scale, 0.1, scaling_3d_mode == SCALING_3D_MODE_FSR3 ? 1.0 : 2.0);
 
+	// Publish jitter phases before resizing the renderer buffers.
+	_update_fsr3_upscaler();
 	RS::get_singleton()->viewport_set_scaling_3d_scale(viewport, scaling_3d_scale);
 }
 
@@ -5177,6 +5192,10 @@ void Viewport::set_scaling_3d_custom_upscaler(const Ref<ViewportUpscaler> &p_ups
 	ERR_MAIN_THREAD_GUARD;
 	ERR_FAIL_COND_MSG(scaling_3d_mode != SCALING_3D_MODE_CUSTOM && p_upscaler.is_valid(), "Can't set a custom upscaler if the scaling mode isn't set to custom.");
 
+	_set_scaling_3d_upscaler(p_upscaler);
+}
+
+void Viewport::_set_scaling_3d_upscaler(const Ref<ViewportUpscaler> &p_upscaler) {
 	// Queue the new renderer resource before releasing the previous RID.
 	Ref<ViewportUpscaler> keep_previous_alive = scaling_3d_custom_upscaler;
 	scaling_3d_custom_upscaler = p_upscaler;
@@ -5189,7 +5208,94 @@ void Viewport::set_scaling_3d_custom_upscaler(const Ref<ViewportUpscaler> &p_ups
 
 Ref<ViewportUpscaler> Viewport::get_scaling_3d_custom_upscaler() const {
 	ERR_READ_THREAD_GUARD_V(Ref<ViewportUpscaler>());
-	return scaling_3d_custom_upscaler;
+	// The managed backend is not a custom resource default to serialize.
+	return scaling_3d_mode == SCALING_3D_MODE_CUSTOM ? scaling_3d_custom_upscaler : Ref<ViewportUpscaler>();
+}
+
+void Viewport::_update_fsr3_upscaler() {
+	if (scaling_3d_mode != SCALING_3D_MODE_FSR3) {
+		return;
+	}
+	StringName type = fsr3_backend == 1 ? "FidelityFXUpscaler" : "FSR3Upscaler";
+	Ref<ViewportUpscaler> upscaler = builtin_fsr3_upscaler;
+	if (upscaler.is_null() || upscaler->get_class_name() != type) {
+		upscaler = Ref<ViewportUpscaler>(Object::cast_to<ViewportUpscaler>(ClassDB::instantiate(type)));
+	}
+	ERR_FAIL_COND_MSG(upscaler.is_null(), "The built-in FSR3 module is unavailable.");
+	upscaler->call("configure_scale", (double)scaling_3d_scale);
+	upscaler->set("sharpness", MIN(fsr_sharpness, 1.0f));
+	if (fsr3_backend == 1) {
+		upscaler->set("library_path", fsr3_library_path);
+		upscaler->set("preferred_version", fsr3_preferred_version);
+		upscaler->set("allow_source_fallback", fsr3_allow_source_fallback);
+	}
+	if (scaling_3d_custom_upscaler != upscaler) {
+		_set_scaling_3d_upscaler(upscaler);
+	}
+	builtin_fsr3_upscaler = upscaler;
+}
+
+void Viewport::set_fsr3_backend(int p_backend) {
+	ERR_MAIN_THREAD_GUARD;
+	ERR_FAIL_INDEX(p_backend, 2);
+	if (fsr3_backend == p_backend) {
+		return;
+	}
+	fsr3_backend = p_backend;
+	_update_fsr3_upscaler();
+	notify_property_list_changed();
+}
+
+int Viewport::get_fsr3_backend() const {
+	ERR_READ_THREAD_GUARD_V(0);
+	return fsr3_backend;
+}
+
+void Viewport::set_fsr3_library_path(const String &p_path) {
+	ERR_MAIN_THREAD_GUARD;
+	if (fsr3_library_path == p_path) {
+		return;
+	}
+	fsr3_library_path = p_path;
+	_update_fsr3_upscaler();
+}
+
+String Viewport::get_fsr3_library_path() const {
+	ERR_READ_THREAD_GUARD_V(String());
+	return fsr3_library_path;
+}
+
+void Viewport::set_fsr3_preferred_version(const String &p_version) {
+	ERR_MAIN_THREAD_GUARD;
+	if (fsr3_preferred_version == p_version) {
+		return;
+	}
+	fsr3_preferred_version = p_version;
+	_update_fsr3_upscaler();
+}
+
+String Viewport::get_fsr3_preferred_version() const {
+	ERR_READ_THREAD_GUARD_V(String());
+	return fsr3_preferred_version;
+}
+
+void Viewport::set_fsr3_allow_source_fallback(bool p_enabled) {
+	ERR_MAIN_THREAD_GUARD;
+	if (fsr3_allow_source_fallback == p_enabled) {
+		return;
+	}
+	fsr3_allow_source_fallback = p_enabled;
+	_update_fsr3_upscaler();
+}
+
+bool Viewport::is_fsr3_source_fallback_allowed() const {
+	ERR_READ_THREAD_GUARD_V(true);
+	return fsr3_allow_source_fallback;
+}
+
+Ref<ViewportUpscaler> Viewport::get_fsr3_upscaler() const {
+	ERR_READ_THREAD_GUARD_V(Ref<ViewportUpscaler>());
+	return scaling_3d_mode == SCALING_3D_MODE_FSR3 ? scaling_3d_custom_upscaler : Ref<ViewportUpscaler>();
 }
 
 void Viewport::set_fsr_sharpness(float p_fsr_sharpness) {
@@ -5204,6 +5310,7 @@ void Viewport::set_fsr_sharpness(float p_fsr_sharpness) {
 
 	fsr_sharpness = p_fsr_sharpness;
 	RS::get_singleton()->viewport_set_fsr_sharpness(viewport, p_fsr_sharpness);
+	_update_fsr3_upscaler();
 }
 
 float Viewport::get_fsr_sharpness() const {
@@ -5451,6 +5558,16 @@ void Viewport::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_scaling_3d_custom_upscaler", "upscaler"), &Viewport::set_scaling_3d_custom_upscaler);
 	ClassDB::bind_method(D_METHOD("get_scaling_3d_custom_upscaler"), &Viewport::get_scaling_3d_custom_upscaler);
 
+	ClassDB::bind_method(D_METHOD("set_fsr3_backend", "value"), &Viewport::set_fsr3_backend);
+	ClassDB::bind_method(D_METHOD("get_fsr3_backend"), &Viewport::get_fsr3_backend);
+	ClassDB::bind_method(D_METHOD("set_fsr3_library_path", "value"), &Viewport::set_fsr3_library_path);
+	ClassDB::bind_method(D_METHOD("get_fsr3_library_path"), &Viewport::get_fsr3_library_path);
+	ClassDB::bind_method(D_METHOD("set_fsr3_preferred_version", "value"), &Viewport::set_fsr3_preferred_version);
+	ClassDB::bind_method(D_METHOD("get_fsr3_preferred_version"), &Viewport::get_fsr3_preferred_version);
+	ClassDB::bind_method(D_METHOD("set_fsr3_allow_source_fallback", "value"), &Viewport::set_fsr3_allow_source_fallback);
+	ClassDB::bind_method(D_METHOD("is_fsr3_source_fallback_allowed"), &Viewport::is_fsr3_source_fallback_allowed);
+	ClassDB::bind_method(D_METHOD("get_fsr3_upscaler"), &Viewport::get_fsr3_upscaler);
+
 	ClassDB::bind_method(D_METHOD("set_fsr_sharpness", "fsr_sharpness"), &Viewport::set_fsr_sharpness);
 	ClassDB::bind_method(D_METHOD("get_fsr_sharpness"), &Viewport::get_fsr_sharpness);
 
@@ -5497,9 +5614,9 @@ void Viewport::_bind_methods() {
 	ADD_GROUP("Scaling 3D", "");
 	{
 #if defined(MACOS_ENABLED) || defined(IOS_ENABLED)
-		const char *scaling_3d_hint = "Nearest (Fastest):5,Bilinear (Fastest):0,FSR 1.0 (Fast):1,FSR 2.2 (Slow):2,MetalFX (Spatial - Fast):3,MetalFX (Temporal - Slow):4,Custom:7";
+		const char *scaling_3d_hint = "Nearest (Fastest):5,Bilinear (Fastest):0,FSR 1.0 (Fast):1,FSR 2.2 (Slow):2,MetalFX (Spatial - Fast):3,MetalFX (Temporal - Slow):4,Custom:7,FSR 3.1.4:8";
 #else
-		const char *scaling_3d_hint = "Nearest (Fastest):5,Bilinear (Fastest):0,FSR 1.0 (Fast):1,FSR 2.2 (Slow):2,NVIDIA DLSS (Temporal):6,Custom:7";
+		const char *scaling_3d_hint = "Nearest (Fastest):5,Bilinear (Fastest):0,FSR 1.0 (Fast):1,FSR 2.2 (Slow):2,NVIDIA DLSS (Temporal):6,Custom:7,FSR 3.1.4:8";
 #endif
 		ADD_PROPERTY(PropertyInfo(Variant::INT, "scaling_3d_mode", PROPERTY_HINT_ENUM, scaling_3d_hint), "set_scaling_3d_mode", "get_scaling_3d_mode");
 	}
@@ -5508,6 +5625,10 @@ void Viewport::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "scaling_3d_custom_upscaler", PROPERTY_HINT_RESOURCE_TYPE, "ViewportUpscaler"), "set_scaling_3d_custom_upscaler", "get_scaling_3d_custom_upscaler");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "texture_mipmap_bias", PROPERTY_HINT_RANGE, "-2,2,0.001"), "set_texture_mipmap_bias", "get_texture_mipmap_bias");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "anisotropic_filtering_level", PROPERTY_HINT_ENUM, String::utf8("Disabled (Fastest),2× (Faster),4× (Fast),8× (Average),16x (Slow)")), "set_anisotropic_filtering_level", "get_anisotropic_filtering_level");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "fsr3_backend", PROPERTY_HINT_ENUM, "Source FSR 3.1.4,External AMD runtime (Vulkan)"), "set_fsr3_backend", "get_fsr3_backend");
+	ADD_PROPERTY(PropertyInfo(Variant::STRING, "fsr3_library_path", PROPERTY_HINT_FILE, "*.dll,*.so"), "set_fsr3_library_path", "get_fsr3_library_path");
+	ADD_PROPERTY(PropertyInfo(Variant::STRING, "fsr3_preferred_version"), "set_fsr3_preferred_version", "get_fsr3_preferred_version");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "fsr3_allow_source_fallback"), "set_fsr3_allow_source_fallback", "is_fsr3_source_fallback_allowed");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "fsr_sharpness", PROPERTY_HINT_RANGE, "0,2,0.01"), "set_fsr_sharpness", "get_fsr_sharpness");
 	ADD_GROUP("Variable Rate Shading", "vrs_");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "vrs_mode", PROPERTY_HINT_ENUM, "Disabled,Texture,XR"), "set_vrs_mode", "get_vrs_mode");
@@ -5572,6 +5693,7 @@ void Viewport::_bind_methods() {
 	BIND_ENUM_CONSTANT(SCALING_3D_MODE_NEAREST);
 	BIND_ENUM_CONSTANT(SCALING_3D_MODE_DLSS);
 	BIND_ENUM_CONSTANT(SCALING_3D_MODE_CUSTOM);
+	BIND_ENUM_CONSTANT(SCALING_3D_MODE_FSR3);
 	BIND_ENUM_CONSTANT(SCALING_3D_MODE_MAX);
 
 	BIND_ENUM_CONSTANT(MSAA_DISABLED);
@@ -5699,6 +5821,11 @@ void Viewport::_validate_property(PropertyInfo &p_property) const {
 		p_property.usage = PROPERTY_USAGE_NO_EDITOR;
 	}
 
+	if (String(p_property.name).begins_with("fsr3_") &&
+			(scaling_3d_mode != SCALING_3D_MODE_FSR3 || (fsr3_backend == 0 && p_property.name != "fsr3_backend"))) {
+		p_property.usage = PROPERTY_USAGE_NO_EDITOR;
+	}
+
 	if (vrs_mode != VRS_TEXTURE && (p_property.name == "vrs_texture")) {
 		p_property.usage = PROPERTY_USAGE_NO_EDITOR;
 	} else if (vrs_mode == VRS_DISABLED && (p_property.name == "vrs_update_mode")) {
@@ -5742,6 +5869,10 @@ Viewport::Viewport() {
 	gui.tooltip_delay = GLOBAL_GET("gui/timers/tooltip_delay_sec");
 
 #ifndef _3D_DISABLED
+	set_fsr3_backend(GLOBAL_GET("rendering/scaling_3d/fsr3/backend"));
+	set_fsr3_library_path(GLOBAL_GET("rendering/scaling_3d/fsr3/library_path"));
+	set_fsr3_preferred_version(GLOBAL_GET("rendering/scaling_3d/fsr3/preferred_version"));
+	set_fsr3_allow_source_fallback(GLOBAL_GET("rendering/scaling_3d/fsr3/allow_source_fallback"));
 	set_scaling_3d_mode((Viewport::Scaling3DMode)(int)GLOBAL_GET("rendering/scaling_3d/mode"));
 	set_scaling_3d_scale(GLOBAL_GET("rendering/scaling_3d/scale"));
 	set_fsr_sharpness((float)GLOBAL_GET("rendering/scaling_3d/fsr_sharpness"));
@@ -6015,7 +6146,7 @@ void Viewport::CameraOverride<T>::enable(Viewport *p_viewport, const T *p_curren
 	}
 
 	T *override_camera = memnew(T);
-	override_camera->set_name(vformat("Override%s", T ::get_class_static()));
+	override_camera->set_name(vformat("Override%s", T::get_class_static()));
 	p_viewport->add_child(override_camera, false, Node::INTERNAL_MODE_BACK);
 
 	override_camera->make_current();

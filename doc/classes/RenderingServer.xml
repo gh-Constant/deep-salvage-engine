@@ -5585,7 +5585,7 @@
 		<constant name="VIEWPORT_SCALING_3D_MODE_CUSTOM" value="7" enum="ViewportScaling3DMode">
 			Use a custom viewport upscaler for the viewport's 3D buffer. The amount of scaling can be set using [member Viewport.scaling_3d_scale].
 		</constant>
-		<constant name="VIEWPORT_SCALING_3D_MODE_MAX" value="7" enum="ViewportScaling3DMode">
+		<constant name="VIEWPORT_SCALING_3D_MODE_MAX" value="8" enum="ViewportScaling3DMode">
 			Represents the size of the [enum ViewportScaling3DMode] enum.
 		</constant>
 		<constant name="VIEWPORT_UPDATE_DISABLED" value="0" enum="ViewportUpdateMode">

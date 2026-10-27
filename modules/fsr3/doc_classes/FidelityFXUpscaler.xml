@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="FidelityFXUpscaler" inherits="FSR3Upscaler" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		Optional external FidelityFX Vulkan runtime with source FSR3 fallback.
+	</brief_description>
+	<description>
+		Loads a compatible external public-API Vulkan provider from [member library_path]. The library must be an external native file, outside the PCK. Native Linux cannot load Windows DLLs. When enabled, [member allow_source_fallback] uses the built-in source implementation if the provider is unavailable. This class does not guarantee compatibility with FSR4 or driver overrides.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="get_active_backend" qualifiers="const">
+			<return type="String" />
+			<description>
+				Returns the active external runtime, source fallback, or unavailable status.
+			</description>
+		</method>
+		<method name="get_active_version" qualifiers="const">
+			<return type="String" />
+			<description>
+				Returns the active provider version, or 3.1.4 when source fallback is active.
+			</description>
+		</method>
+		<method name="get_available_versions" qualifiers="const">
+			<return type="PackedStringArray" />
+			<description>
+				Returns provider names reported by the loaded runtime. It is empty before initialization or after a loading failure.
+			</description>
+		</method>
+		<method name="get_binary_dispatch_count" qualifiers="const">
+			<return type="int" />
+			<description>
+				Returns successful external-runtime dispatches only.
+			</description>
+		</method>
+		<method name="get_binary_error" qualifiers="const">
+			<return type="String" />
+			<description>
+				Returns the latest external runtime loading, selection or dispatch error. This remains available when source fallback is active.
+			</description>
+		</method>
+		<method name="get_binary_failure_count" qualifiers="const">
+			<return type="int" />
+			<description>
+				Returns failures reported while dispatching through the external runtime.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="allow_source_fallback" type="bool" setter="set_allow_source_fallback" getter="get_allow_source_fallback" default="true">
+			Use built-in source FSR 3.1.4 when the external Vulkan provider is unavailable or fails.
+		</member>
+		<member name="library_path" type="String" setter="set_library_path" getter="get_library_path" default="&quot;&quot;">
+			Path to an external native public-API Vulkan runtime. Files packed inside the PCK cannot be loaded as native libraries.
+		</member>
+		<member name="preferred_version" type="String" setter="set_preferred_version" getter="get_preferred_version" default="&quot;&quot;">
+			Exact provider name to select from the runtime version query. An empty string lets the runtime choose.
+		</member>
+	</members>
+</class>
