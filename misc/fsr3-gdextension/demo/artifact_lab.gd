@@ -326,7 +326,7 @@ func _process(delta: float) -> void:
 		active_name = "FSR3 / %.2f scale" % vp.scaling_3d_scale
 	elif vp.scaling_3d_custom_upscaler == simple:
 		active_name = "Basic compute / %.2f scale" % vp.scaling_3d_scale
-	label.text = "FSR 3.1.4  /  TEMPORAL ARTIFACT LAB  /  " + active_name
+	label.text = ("FSR %s  /  TEMPORAL ARTIFACT LAB  /  " % fsr.get_source_version()) + active_name
 	status.text = "%.0f FPS  |  %dx%d output  |  %d FSR frames / %d GPU passes  |  %d failures  |  %.2fx speed%s" % [Engine.get_frames_per_second(), vp.size.x, vp.size.y, fsr.get_dispatch_count(), fsr.get_gpu_dispatch_count(), fsr.get_failure_count(), motion_speed, " / PAUSED" if paused else ""]
 	if fsr is FidelityFXUpscaler:
 		label.text = "FIDELITYFX  /  TEMPORAL ARTIFACT LAB  /  " + active_name

@@ -18,7 +18,7 @@
 		<method name="get_active_version" qualifiers="const">
 			<return type="String" />
 			<description>
-				Returns the active provider version, or 3.1.4 when source fallback is active.
+				Returns the active provider version, or 3.1.6 when source fallback is active.
 			</description>
 		</method>
 		<method name="get_available_versions" qualifiers="const">
@@ -48,7 +48,7 @@
 	</methods>
 	<members>
 		<member name="allow_source_fallback" type="bool" setter="set_allow_source_fallback" getter="get_allow_source_fallback" default="true">
-			Use built-in source FSR 3.1.4 when the external Vulkan provider is unavailable or fails.
+			Use built-in source FSR 3.1.6 when the external Vulkan provider is unavailable or fails.
 		</member>
 		<member name="library_path" type="String" setter="set_library_path" getter="get_library_path" default="&quot;&quot;">
 			Path to an external native public-API Vulkan runtime. Files packed inside the PCK cannot be loaded as native libraries.

@@ -87,6 +87,7 @@ public:
 	float get_sharpness() const { return sharpness.load(); }
 	virtual void reset_history() { reset_serial.fetch_add(1); }
 	void configure_scale(double scale);
+	String get_source_version() const;
 	virtual int64_t get_dispatch_count() const { return dispatch_count.load(); }
 	int64_t get_gpu_dispatch_count() const { return gpu_dispatch_count.load(); }
 	int64_t get_context_count() const { return context_count.load(); }

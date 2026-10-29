@@ -357,7 +357,7 @@
 			Allow the external backend to fall back to built-in source FSR3. Enabled by default.
 		</member>
 		<member name="fsr3_backend" type="int" setter="set_fsr3_backend" getter="get_fsr3_backend" default="0">
-			Built-in FSR3 backend: 0 selects source FSR 3.1.4 (the default), 1 selects an external public-API Vulkan runtime.
+			Built-in FSR3 backend: 0 selects source FSR 3.1.6 (the default), 1 selects an external public-API Vulkan runtime.
 		</member>
 		<member name="fsr3_library_path" type="String" setter="set_fsr3_library_path" getter="get_fsr3_library_path" default="&quot;&quot;">
 			External runtime file used when [member fsr3_backend] is 1. The file must remain outside the PCK.
@@ -612,7 +612,7 @@
 			Use a custom viewport upscaler for the viewport's 3D buffer. The amount of scaling can be set using [member scaling_3d_scale].
 		</constant>
 		<constant name="SCALING_3D_MODE_FSR3" value="8" enum="Scaling3DMode">
-			Built-in source FSR 3.1.4 temporal upscaling. Requires the fsr3 module and Forward+. A scale of 1.0 provides Native AA. No addon is required.
+			Built-in source FSR 3.1.6 temporal upscaling. Requires the fsr3 module and Forward+. A scale of 1.0 provides Native AA. No addon is required.
 		</constant>
 		<constant name="SCALING_3D_MODE_MAX" value="9" enum="Scaling3DMode">
 			Represents the size of the [enum Scaling3DMode] enum.

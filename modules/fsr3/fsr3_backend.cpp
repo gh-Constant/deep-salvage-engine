@@ -232,9 +232,9 @@ FSR3UpscalerEffect::FSR3UpscalerEffect() {
 	{
 		Vector<String> accumulate_modes_with_fp16;
 		accumulate_modes_with_fp16.push_back("\n");
-		accumulate_modes_with_fp16.push_back("\n#define FFX_FSR2_OPTION_APPLY_SHARPENING 1\n");
+		accumulate_modes_with_fp16.push_back("\n#define FFX_FSR3UPSCALER_OPTION_APPLY_SHARPENING 1\n");
 		accumulate_modes_with_fp16.push_back("\n#define FFX_HALF 1\n");
-		accumulate_modes_with_fp16.push_back("\n#define FFX_HALF 1\n#define FFX_FSR2_OPTION_APPLY_SHARPENING 1\n");
+		accumulate_modes_with_fp16.push_back("\n#define FFX_HALF 1\n#define FFX_FSR3UPSCALER_OPTION_APPLY_SHARPENING 1\n");
 
 		// Workaround: Disable FP16 path for the accumulate pass on NVIDIA due to reduced occupancy and high VRAM throughput.
 		FFXCommon::Pass &pass = device.passes[FFX_FSR3UPSCALER_PASS_ACCUMULATE];
@@ -265,7 +265,7 @@ FSR3UpscalerEffect::FSR3UpscalerEffect() {
 		// Sharpen pass is a clone of the accumulate pass with the sharpening variant.
 		FFXCommon::Pass &sharpen_pass = device.passes[FFX_FSR3UPSCALER_PASS_ACCUMULATE_SHARPEN];
 		sharpen_pass = pass;
-		sharpen_pass.shader = compile_compute(fsr3upscaler_accumulate_pass, general_defines + "\n#define FFX_FSR2_OPTION_APPLY_SHARPENING 1\n");
+		sharpen_pass.shader = compile_compute(fsr3upscaler_accumulate_pass, general_defines + "\n#define FFX_FSR3UPSCALER_OPTION_APPLY_SHARPENING 1\n");
 	}
 
 	{

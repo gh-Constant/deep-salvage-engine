@@ -1,6 +1,6 @@
 // This file is part of the FidelityFX SDK.
 //
-// Copyright (C) 2024 Advanced Micro Devices, Inc.
+// Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files(the "Software"), to deal
@@ -183,10 +183,7 @@ static float halton(int32_t index, int32_t base)
 
 static void fsr3upscalerDebugCheckDispatch(FfxFsr3UpscalerContext_Private* context, const FfxFsr3UpscalerDispatchDescription* params)
 {
-    if (params->commandList == nullptr)
-    {
-        FFX_PRINT_MESSAGE(FFX_MESSAGE_TYPE_ERROR, L"commandList is null");
-    }
+    // Godot records commands through RenderingDevice rather than an SDK commandList.
 
     if (params->color.resource == nullptr)
     {
@@ -203,12 +200,14 @@ static void fsr3upscalerDebugCheckDispatch(FfxFsr3UpscalerContext_Private* conte
         FFX_PRINT_MESSAGE(FFX_MESSAGE_TYPE_ERROR, L"motionVectors resource is null");
     }
 
-    if (params->exposure.resource != nullptr)
+    if (params->exposure.resource == nullptr && !(context->contextDescription.flags & FFX_FSR3UPSCALER_ENABLE_AUTO_EXPOSURE))
     {
-        if ((context->contextDescription.flags & FFX_FSR3UPSCALER_ENABLE_AUTO_EXPOSURE) == FFX_FSR3UPSCALER_ENABLE_AUTO_EXPOSURE)
-        {
-            FFX_PRINT_MESSAGE(FFX_MESSAGE_TYPE_WARNING, L"exposure resource provided, however auto exposure flag is present");
-        }
+        FFX_PRINT_MESSAGE(FFX_MESSAGE_TYPE_WARNING, L"exposure resource is null and auto exposure flag is unset");
+    }
+
+    if (params->exposure.resource != nullptr && (context->contextDescription.flags & FFX_FSR3UPSCALER_ENABLE_AUTO_EXPOSURE))
+    {
+        FFX_PRINT_MESSAGE(FFX_MESSAGE_TYPE_WARNING, L"exposure resource provided and auto exposure flag is set");
     }
 
     if (params->output.resource == nullptr)
@@ -243,6 +242,11 @@ static void fsr3upscalerDebugCheckDispatch(FfxFsr3UpscalerContext_Private* conte
         FFX_PRINT_MESSAGE(FFX_MESSAGE_TYPE_WARNING, L"renderSize contains zero dimension");
     }
 
+    if ((params->upscaleSize.width == 0) ^ (params->upscaleSize.height == 0))
+    {
+        FFX_PRINT_MESSAGE(FFX_MESSAGE_TYPE_WARNING, L"upscaleSize contains one dimension that is zero; to set maxUpscaleSize, both dimensions must be zero");
+    }
+
     if (params->sharpness < 0.0f || params->sharpness > 1.0f)
     {
         FFX_PRINT_MESSAGE(FFX_MESSAGE_TYPE_WARNING, L"sharpness contains value outside of expected range [0.0, 1.0]");
@@ -258,50 +262,21 @@ static void fsr3upscalerDebugCheckDispatch(FfxFsr3UpscalerContext_Private* conte
         FFX_PRINT_MESSAGE(FFX_MESSAGE_TYPE_ERROR, L"preExposure provided as 0.0f which is invalid");
     }
 
-    bool infiniteDepth = (context->contextDescription.flags & FFX_FSR3UPSCALER_ENABLE_DEPTH_INFINITE) == FFX_FSR3UPSCALER_ENABLE_DEPTH_INFINITE;
-    bool inverseDepth = (context->contextDescription.flags & FFX_FSR3UPSCALER_ENABLE_DEPTH_INVERTED) == FFX_FSR3UPSCALER_ENABLE_DEPTH_INVERTED;
-
-    if (inverseDepth)
+    if (params->cameraNear < 0.075f)
     {
-        if (params->cameraNear < params->cameraFar)
-        {
-            FFX_PRINT_MESSAGE(FFX_MESSAGE_TYPE_WARNING,
-                L"FFX_FSR3UPSCALER_ENABLE_DEPTH_INVERTED flag is present yet cameraNear is less than cameraFar");
-        }
-        if (infiniteDepth)
-        {
-            if (params->cameraNear != FLT_MAX)
-            {
-                FFX_PRINT_MESSAGE(FFX_MESSAGE_TYPE_WARNING,
-                    L"FFX_FSR3UPSCALER_ENABLE_DEPTH_INFINITE and FFX_FSR3UPSCALER_ENABLE_DEPTH_INVERTED present, yet cameraNear != FLT_MAX");
-            }
-        }
-        if (params->cameraFar < 0.075f)
-        {
-            FFX_PRINT_MESSAGE(FFX_MESSAGE_TYPE_WARNING,
-                L"FFX_FSR3UPSCALER_ENABLE_DEPTH_INVERTED present, cameraFar value is very low which may result in depth separation artefacting");
-        }
+        FFX_PRINT_MESSAGE(FFX_MESSAGE_TYPE_WARNING,
+            L"cameraNear value is very low which may result in depth separation artefacting");
     }
-    else
+
+    if (params->cameraFar < 0.075f)
     {
-        if (params->cameraNear > params->cameraFar)
-        {
-            FFX_PRINT_MESSAGE(FFX_MESSAGE_TYPE_WARNING,
-                L"cameraNear is greater than cameraFar in non-inverted-depth context");
-        }
-        if (infiniteDepth)
-        {
-            if (params->cameraFar != FLT_MAX)
-            {
-                FFX_PRINT_MESSAGE(FFX_MESSAGE_TYPE_WARNING,
-                    L"FFX_FSR3UPSCALER_ENABLE_DEPTH_INFINITE present, yet cameraFar != FLT_MAX");
-            }
-        }
-        if (params->cameraNear < 0.075f)
-        {
-            FFX_PRINT_MESSAGE(FFX_MESSAGE_TYPE_WARNING,
-                L"cameraNear value is very low which may result in depth separation artefacting");
-        }
+        FFX_PRINT_MESSAGE(FFX_MESSAGE_TYPE_WARNING,
+            L"cameraFar value is very low which may result in depth separation artefacting");
+    }
+
+    if (params->cameraNear  == params->cameraFar)
+    {
+        FFX_PRINT_MESSAGE(FFX_MESSAGE_TYPE_ERROR, L"cameraNear and cameraFar are equal - this is invalid");
     }
 
     if (params->cameraFovAngleVertical <= 0.0f)

@@ -2,6 +2,7 @@
 from misc.utility.scons_hints import *
 
 from pathlib import Path
+import re
 
 import shader_builders
 
@@ -13,6 +14,14 @@ env_fsr3.Prepend(CPPPATH=[Dir(".").abspath, "#thirdparty/vulkan"])
 # The engine's FSR2 has its own SDK assertion symbols. Keep the two SDKs isolated.
 env_fsr3.Append(CPPDEFINES=["FFX_GCC", ("ffxAssertReport", "godot_fsr3_assert_report"),
                           ("ffxAssertSetPrintingCallback", "godot_fsr3_assert_set_printing_callback")])
+# Both SDKs define global Ffx types with different layouts. C++ template symbols
+# such as LocalVector<FfxGpuJobDescription>::reserve would otherwise collide at
+# link time, allowing the linker to select the other SDK's allocation size.
+# Prefix this private SDK's types consistently in both adapter and vendor code.
+sdk_types = set()
+for header in Path(Dir("#thirdparty/amd-ffx").abspath).glob("*.h"):
+    sdk_types.update(re.findall(r"\bFfx\w+\b", header.read_text(encoding="utf-8")))
+env_fsr3.Append(CPPDEFINES=[(name, "GodotFSR3_" + name) for name in sorted(sdk_types)])
 headers = Glob("shaders/fsr3/*.glsl") + Glob("shaders/*.glsl")
 headers += [str(path) for path in sorted(Path(Dir("#thirdparty/amd-ffx").abspath).rglob("*"))
             if path.suffix in (".h", ".glsl")]

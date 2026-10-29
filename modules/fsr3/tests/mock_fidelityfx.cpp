@@ -26,8 +26,10 @@ extern "C" ffxReturnCode_t ffxCreateContext(ffxContext *out,ffxCreateContextDesc
     auto *create=reinterpret_cast<ffxCreateContextDescUpscale *>(header);
     auto *backend=reinterpret_cast<ffxCreateBackendVKDesc *>(header->pNext);
     if(!out||header->type!=FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE||backend->header.type!=FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK) return FFX_API_RETURN_ERROR_PARAMETER;
-    if(!backend->header.pNext || backend->header.pNext->type!=FFX_API_DESC_TYPE_OVERRIDE_VERSION || reinterpret_cast<ffxOverrideVersion *>(backend->header.pNext)->versionId!=0x55) return FFX_API_RETURN_ERROR_PARAMETER;
-    auto *ctx=new Context;ctx->device=backend->vkDevice;
+    if(backend->header.pNext && (backend->header.pNext->type!=FFX_API_DESC_TYPE_OVERRIDE_VERSION || reinterpret_cast<ffxOverrideVersion *>(backend->header.pNext)->versionId!=0x55)) return FFX_API_RETURN_ERROR_PARAMETER;
+    if(!backend->deviceContext.vkDevice || !backend->deviceContext.vkPhysicalDevice || !backend->deviceContext.vkDeviceProcAddr) return FFX_API_RETURN_ERROR_PARAMETER;
+    trace(backend->header.pNext ? "PINNED" : "AUTO");
+    auto *ctx=new Context;ctx->device=backend->deviceContext.vkDevice;
     std::ifstream file(std::getenv("FSR3_MOCK_SPIRV"),std::ios::binary|std::ios::ate);
     if(!file) {delete ctx;return FFX_API_RETURN_ERROR;}
     size_t bytes=file.tellg();file.seekg(0);std::vector<uint32_t> words((bytes+3)/4);file.read(reinterpret_cast<char *>(words.data()),bytes);
@@ -62,6 +64,8 @@ extern "C" ffxReturnCode_t ffxConfigure(ffxContext *,const ffxConfigureDescHeade
 extern "C" ffxReturnCode_t ffxQuery(ffxContext *,ffxQueryDescHeader *header) {
     if(header->type==FFX_API_QUERY_DESC_TYPE_GET_VERSIONS) {
         auto *query=reinterpret_cast<ffxQueryDescGetVersions *>(header);
+        auto *device=static_cast<VkDeviceContext *>(query->device);
+        if(!device || !device->vkDevice || !device->vkPhysicalDevice || !device->vkDeviceProcAddr) return FFX_API_RETURN_ERROR_PARAMETER;
         if(*query->outputCount && query->versionIds) query->versionIds[0]=0x55;
         if(*query->outputCount && query->versionNames) query->versionNames[0]="TEST_GREEN_COMPUTE_ONLY";
         *query->outputCount=1;return FFX_API_RETURN_OK;

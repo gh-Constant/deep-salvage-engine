@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <class name="FSR3Upscaler" inherits="ViewportUpscaler" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
 	<brief_description>
-		Built-in source FidelityFX Super Resolution 3.1.4 temporal upscaler.
+		Built-in source FidelityFX Super Resolution 3.1.6 temporal upscaler.
 	</brief_description>
 	<description>
 		Uses GPU shaders compiled into the engine. Select [constant Viewport.SCALING_3D_MODE_FSR3] to let a viewport own and configure this resource automatically. Forward+ is required. A scale of 1.0 provides Native AA. No GDExtension or AMD runtime library is required. Frame generation is not implemented.
@@ -9,6 +9,10 @@
 	<tutorials>
 	</tutorials>
 	<methods>
+		<method name="get_source_version" qualifiers="const">
+			<return type="String" />
+			<description>Returns the version of the compiled analytical FSR3 source backend.</description>
+		</method>
 		<method name="configure_scale">
 			<return type="void" />
 			<param index="0" name="scale" type="float" />

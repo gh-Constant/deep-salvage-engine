@@ -38,11 +38,15 @@ func _process(delta: float) -> void:
         check_green()
     if frame == 60:
         get_window().size = Vector2i(1001,563)
+    if frame == 80:
+        binary_resource.preferred_version = ""
+    if frame == 85:
+        check_green()
     if frame == 90:
         binary_resource.allow_source_fallback = true
         binary_resource.preferred_version = "UNAVAILABLE_PROVIDER"
     if frame == 125:
-        var passed := checked == 2 and binary_resource.get_binary_dispatch_count() >= 80 and binary_resource.get_binary_failure_count() == 0 and binary_resource.get_active_backend() == "Source FSR3"
+        var passed := checked == 3 and binary_resource.get_binary_dispatch_count() >= 80 and binary_resource.get_binary_failure_count() == 0 and binary_resource.get_active_backend() == "Source FSR3"
         print("NATIVE_BINARY_TEST ", "PASS" if passed else "FAIL", " native_dispatches=", binary_resource.get_binary_dispatch_count(), " active=", binary_resource.get_active_backend())
         get_tree().quit(0 if passed else 1)
 func check_green() -> void:
@@ -68,4 +72,5 @@ for name,command in [('import',base+['--editor','--import','--quit']),('run',bas
 events=trace.read_text().splitlines()
 assert events.count('CREATE')==events.count('DESTROY') and events.count('CREATE')>=2,events
 assert events.count('DISPATCH')>=80,events
+assert 'AUTO' in events and 'PINNED' in events,events
 print('Native Vulkan command dispatch, post-processing output, resize, explicit provider selection, source fallback and deferred context lifetime passed. This provider is test-only; AMD Windows DLL execution is untested here.')

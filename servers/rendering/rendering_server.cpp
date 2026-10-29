@@ -3848,7 +3848,7 @@ void RenderingServer::init() {
 		String mode_hints;
 		String mode_hints_metal;
 		{
-			Vector<String> mode_hints_arr = { "Bilinear (Fastest):0", "FSR 1.0 (Fast):1", "FSR 2.2 (Slow):2", "MetalFX (Spatial):3", "MetalFX (Temporal):4", "Nearest:5", "NVIDIA DLSS:6", "FSR 3.1.4:8" };
+			Vector<String> mode_hints_arr = { "Bilinear (Fastest):0", "FSR 1.0 (Fast):1", "FSR 2.2 (Slow):2", "MetalFX (Spatial):3", "MetalFX (Temporal):4", "Nearest:5", "NVIDIA DLSS:6", "FSR 3.1.6:8" };
 			mode_hints = String(",").join(mode_hints_arr);
 			mode_hints_metal = String(",").join(mode_hints_arr);
 		}
@@ -3859,7 +3859,7 @@ void RenderingServer::init() {
 	}
 	GLOBAL_DEF(PropertyInfo(Variant::FLOAT, "rendering/scaling_3d/scale", PROPERTY_HINT_RANGE, "0.1,2.0,0.0001"), 1.0);
 	GLOBAL_DEF(PropertyInfo(Variant::FLOAT, "rendering/scaling_3d/fsr_sharpness", PROPERTY_HINT_RANGE, "0,2,0.01"), 0.2f);
-	GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/scaling_3d/fsr3/backend", PROPERTY_HINT_ENUM, "Source FSR 3.1.4,External AMD runtime (Vulkan)"), 0);
+	GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/scaling_3d/fsr3/backend", PROPERTY_HINT_ENUM, "Source FSR 3.1.6,External AMD runtime (Vulkan)"), 0);
 	GLOBAL_DEF(PropertyInfo(Variant::STRING, "rendering/scaling_3d/fsr3/library_path", PROPERTY_HINT_FILE, "*.dll,*.so"), "");
 	GLOBAL_DEF("rendering/scaling_3d/fsr3/preferred_version", "");
 	GLOBAL_DEF("rendering/scaling_3d/fsr3/allow_source_fallback", true);

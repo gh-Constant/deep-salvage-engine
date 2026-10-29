@@ -204,8 +204,8 @@ License: Expat
 
 Files: thirdparty/amd-ffx/*
  thirdparty/amd-fidelityfx-api/*
-Comment: AMD FidelityFX SDK (FSR 3.1.4 and public Vulkan runtime API)
-Copyright: 2024, Advanced Micro Devices, Inc.
+Comment: AMD FidelityFX SDK (FSR 3.1.6 source port and SDK 2.4 public Vulkan runtime API)
+Copyright: 2024-2026, Advanced Micro Devices, Inc.
 License: Expat
 
 Files: thirdparty/amd-fsr2/*

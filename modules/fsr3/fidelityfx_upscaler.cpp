@@ -324,14 +324,14 @@ void FidelityFXUpscaler::render_callback(const RenderData *data) {
 		std::lock_guard<std::mutex> lock(stats->mutex);
 		if (stats->error != reason) {
 			if (fallback) {
-				WARN_PRINT(reason + String("; using source FSR 3.1.4"));
+				WARN_PRINT(reason + String("; using source FSR 3.1.6"));
 			} else {
 				ERR_PRINT(reason);
 			}
 		}
 		stats->error = reason;
 		stats->backend = fallback ? "Source FSR3" : "Unavailable";
-		stats->version = fallback ? "3.1.4" : "";
+		stats->version = fallback ? get_source_version() : "";
 	};
 	if (revision != applied_revision) {
 		binary.reset();
@@ -373,13 +373,21 @@ void FidelityFXUpscaler::render_callback(const RenderData *data) {
 			binary->library = std::make_shared<fidelityfx::Library>();
 			if (!binary->library->open(std::filesystem::u8path(path.utf8().get_data()))) {
 				reason = String(binary->library->error().c_str());
-			} else if (!binary->library->versions(binary->versions)) {
-				reason = String(binary->library->error().c_str());
 			} else {
 				binary->vulkan = std::make_shared<VulkanLoader>();
 				if (!binary->vulkan->get_device_proc) {
 					reason = "Cannot resolve vkGetDeviceProcAddr";
 				} else {
+					// SDK 2.4 filters providers and queries driver upgrades using this device.
+					VkDeviceContext device_context{};
+					device_context.vkDevice = reinterpret_cast<VkDevice>(render_device()->get_driver_resource(RD::DRIVER_RESOURCE_LOGICAL_DEVICE, RID(), 0));
+					device_context.vkPhysicalDevice = reinterpret_cast<VkPhysicalDevice>(render_device()->get_driver_resource(RD::DRIVER_RESOURCE_PHYSICAL_DEVICE, RID(), 0));
+					device_context.vkDeviceProcAddr = binary->vulkan->get_device_proc;
+					if (!binary->library->versions(binary->versions, &device_context)) {
+						reason = String(binary->library->error().c_str());
+					}
+				}
+				if (reason.is_empty()) {
 					binary->prepare_shader = compile_compute(PREPARE_INPUTS);
 					if (!binary->prepare_shader.is_valid()) {
 						reason = "FidelityFX input preparation shader failed";
@@ -431,9 +439,9 @@ void FidelityFXUpscaler::render_callback(const RenderData *data) {
 		candidate->internal = internal;
 		candidate->target = target;
 		candidate->backend.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK;
-		candidate->backend.vkDevice = reinterpret_cast<VkDevice>(render_device()->get_driver_resource(RD::DRIVER_RESOURCE_LOGICAL_DEVICE, RID(), 0));
-		candidate->backend.vkPhysicalDevice = reinterpret_cast<VkPhysicalDevice>(render_device()->get_driver_resource(RD::DRIVER_RESOURCE_PHYSICAL_DEVICE, RID(), 0));
-		candidate->backend.vkDeviceProcAddr = candidate->vulkan->get_device_proc;
+		candidate->backend.deviceContext.vkDevice = reinterpret_cast<VkDevice>(render_device()->get_driver_resource(RD::DRIVER_RESOURCE_LOGICAL_DEVICE, RID(), 0));
+		candidate->backend.deviceContext.vkPhysicalDevice = reinterpret_cast<VkPhysicalDevice>(render_device()->get_driver_resource(RD::DRIVER_RESOURCE_PHYSICAL_DEVICE, RID(), 0));
+		candidate->backend.deviceContext.vkDeviceProcAddr = candidate->vulkan->get_device_proc;
 		candidate->create.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE;
 		candidate->create.header.pNext = &candidate->backend.header;
 		candidate->create.flags = FFX_UPSCALE_ENABLE_HIGH_DYNAMIC_RANGE | FFX_UPSCALE_ENABLE_DEPTH_INVERTED;

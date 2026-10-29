@@ -106,7 +106,7 @@ bool Library::open(const std::filesystem::path &absolute_file) {
 	std::array<char, 4> magic{};
 	file.read(magic.data(), magic.size());
 	if (magic[0] == 'M' && magic[1] == 'Z') {
-		error_message = "Windows PE DLL cannot be loaded by native Linux; use the source FSR 3.1.4 backend";
+		error_message = "Windows PE DLL cannot be loaded by native Linux; use the source FSR 3.1.6 backend";
 		return false;
 	}
 	module = dlopen(absolute_file.c_str(), RTLD_NOW | RTLD_LOCAL);

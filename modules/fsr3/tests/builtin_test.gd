@@ -16,6 +16,7 @@ func _ready() -> void:
 	assert(window.scaling_3d_mode == Viewport.SCALING_3D_MODE_FSR3)
 	source = window.get_fsr3_upscaler()
 	assert(source != null)
+	assert(source.get_source_version() == "3.1.6")
 	var world: WorldEnvironment = WorldEnvironment.new()
 	world.environment = Environment.new()
 	world.environment.background_mode = Environment.BG_COLOR

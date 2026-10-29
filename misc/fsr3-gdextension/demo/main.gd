@@ -73,7 +73,7 @@ func _process(_delta: float) -> void:
 	moving.rotation.y = t
 	camera.position.x = sin(t * 0.35) * 1.5
 	camera.look_at(Vector3(0, 0.6, 0))
-	label.text = "FSR 3.1.4 built-in | 1: Quality  2: Native AA  3: Basic compute  4: Bilinear\nFSR dispatches: %d | contexts: %d | failures: %d" % [fsr.get_dispatch_count(), fsr.get_context_count(), fsr.get_failure_count()]
+	label.text = "FSR %s built-in | 1: Quality  2: Native AA  3: Basic compute  4: Bilinear\nFSR dispatches: %d | contexts: %d | failures: %d" % [fsr.get_source_version(), fsr.get_dispatch_count(), fsr.get_context_count(), fsr.get_failure_count()]
 	if not automated:
 		return
 	if frame in [45, 90, 135, 180, 225, 270, 315]:

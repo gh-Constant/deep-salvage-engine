@@ -100,6 +100,7 @@ void FSR3Upscaler::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_dispatch_count"), &FSR3Upscaler::get_dispatch_count);
 	ClassDB::bind_method(D_METHOD("get_gpu_dispatch_count"), &FSR3Upscaler::get_gpu_dispatch_count);
 	ClassDB::bind_method(D_METHOD("get_context_count"), &FSR3Upscaler::get_context_count);
+	ClassDB::bind_method(D_METHOD("get_source_version"), &FSR3Upscaler::get_source_version);
 	ClassDB::bind_method(D_METHOD("get_failure_count"), &FSR3Upscaler::get_failure_count);
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "sharpness", PROPERTY_HINT_RANGE, "0,1,0.01"), "set_sharpness", "get_sharpness");
 }
@@ -107,6 +108,9 @@ FSR3Upscaler::FSR3Upscaler() {
 	set_requires_motion_vectors(true);
 	set_mipmap_bias(1.0f);
 	configure_scale(0.67);
+}
+String FSR3Upscaler::get_source_version() const {
+	return vformat("%d.%d.%d", FFX_FSR3UPSCALER_VERSION_MAJOR, FFX_FSR3UPSCALER_VERSION_MINOR, FFX_FSR3UPSCALER_VERSION_PATCH);
 }
 void FSR3Upscaler::configure_scale(double scale) {
 	scale = CLAMP(scale, 0.1, 1.0);
@@ -181,7 +185,7 @@ void FSR3Upscaler::render_callback(const RenderData *data) {
 		params.reprojection = temporal_data["reprojection"];
 		params.sharpness = sharpness.load();
 		params.reset_accumulation = reset;
-		render_device()->draw_command_begin_label("FSR 3.1.4 built-in", Color(0.4, 0.8, 0.2));
+		render_device()->draw_command_begin_label("FSR 3.1.6 built-in", Color(0.4, 0.8, 0.2));
 		uint64_t before = state.context->scratch.compute_dispatch_count;
 		if (backend->upscale(params)) {
 			dispatch_count.fetch_add(1);

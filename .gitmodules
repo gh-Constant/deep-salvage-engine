@@ -1,3 +1,6 @@
 [submodule "misc/fsr3-gdextension/godot-cpp"]
 	path = misc/fsr3-gdextension/godot-cpp
 	url = https://github.com/godotengine/godot-cpp.git
+[submodule "thirdparty/FidelityFX-SDK"]
+	path = thirdparty/FidelityFX-SDK
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK.git

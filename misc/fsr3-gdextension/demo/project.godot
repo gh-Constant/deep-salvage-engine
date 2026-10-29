@@ -10,7 +10,7 @@ config_version=5
 
 [application]
 
-config/name="FSR 3.1.4 Temporal Artifact Lab"
+config/name="FSR 3.1.6 Temporal Artifact Lab"
 run/main_scene="res://artifact_lab.tscn"
 config/features=PackedStringArray("4.8")
 
@@ -26,3 +26,5 @@ window/size/window_height_override=540
 renderer/rendering_method.mobile="forward_plus"
 scaling_3d/mode=7
 scaling_3d/scale=0.67
+scaling_3d/fsr3/backend=1
+scaling_3d/fsr3/library_path="res://amd_runtime/amd_fidelityfx_upscaler_vk.dll"

@@ -3579,10 +3579,10 @@
 			[b]Note:[/b] Changing this property requires a restart to take effect.
 		</member>
 		<member name="rendering/scaling_3d/fsr3/allow_source_fallback" type="bool" setter="" getter="" default="true">
-			Allow an unavailable or failed external provider to use built-in source FSR 3.1.4 instead.
+			Allow an unavailable or failed external provider to use built-in source FSR 3.1.6 instead.
 		</member>
 		<member name="rendering/scaling_3d/fsr3/backend" type="int" setter="" getter="" default="0">
-			Default FSR3 backend: 0 for built-in source FSR 3.1.4, 1 for an external public-API Vulkan runtime.
+			Default FSR3 backend: 0 for built-in source FSR 3.1.6, 1 for an external public-API Vulkan runtime.
 		</member>
 		<member name="rendering/scaling_3d/fsr3/library_path" type="String" setter="" getter="" default="&quot;&quot;">
 			External native runtime path for the external FSR3 backend. Keep the library outside the PCK.
