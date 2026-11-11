@@ -1044,6 +1044,8 @@ public:
 		SUPPORTS_SHADER_DEVICE_CLOCK,
 		SUPPORTS_VERTEX_PIPELINE_STORES,
 		SUPPORTS_RAYTRACING_POSITION_FETCH,
+		// MetalFX frame interpolation (macOS 26+): one generated frame between two rendered ones.
+		SUPPORTS_METALFX_FRAME_INTERPOLATION,
 	};
 
 	enum SubgroupOperations {

@@ -2068,6 +2068,26 @@ void RenderForwardClustered::_render_3d_upscaling(const RenderDataRD *p_render_d
 		}
 
 		RD::get_singleton()->draw_command_end_label();
+
+		if (rb->get_frame_generation() && rb->get_view_count() == 1 && RD::get_singleton()->has_feature(RD::SUPPORTS_METALFX_FRAME_INTERPOLATION)) {
+			// The generated frame is made when the final image reaches the screen
+			// (RendererCompositorRD::blit_generated_frames_to_screen); hand it this frame's inputs.
+			const Projection &proj = p_render_data->scene_data->cam_projection;
+			real_t aspect = proj.get_aspect();
+			RendererRD::MFXFrameInterpolationInputs fi;
+			fi.depth = rb->get_depth_texture(0);
+			fi.motion = rb->get_velocity_buffer(false, 0);
+			fi.motion_vector_scale = rb->get_internal_size();
+			fi.jitter_offset = jitter;
+			fi.near_plane = p_render_data->scene_data->z_near;
+			fi.far_plane = p_render_data->scene_data->z_far;
+			fi.fov_degrees = proj.is_orthogonal() ? 0.0f : float(Projection::get_fovy(proj.get_fov(), aspect));
+			fi.aspect_ratio = aspect;
+			fi.delta_time = float(p_time_step);
+			fi.reset = reset;
+			fi.frame = RSG::rasterizer->get_frame_number();
+			rb->set_mfx_frame_interpolation_inputs(fi);
+		}
 #endif
 	} else if (p_using_taa) {
 		RD::get_singleton()->draw_command_begin_label("TAA");

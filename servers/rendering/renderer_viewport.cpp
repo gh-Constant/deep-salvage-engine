@@ -989,6 +989,9 @@ void RendererViewport::draw_viewports(bool p_swap_buffers) {
 				//copy to screen if set as such
 				RenderingServerTypes::BlitToScreen blit;
 				blit.render_target = vp->render_target;
+				if (vp->frame_generation && vp->render_buffers.is_valid()) {
+					blit.frame_generation_buffers = vp->render_buffers.ptr();
+				}
 				if (vp->viewport_to_screen_rect != Rect2()) {
 					blit.dst_rect = vp->viewport_to_screen_rect;
 				} else {
@@ -1036,6 +1039,24 @@ void RendererViewport::draw_viewports(bool p_swap_buffers) {
 
 	GodotProfileZoneGrouped(_profile_zone, "rasterizer->blit_render_targets_to_screen");
 	if (p_swap_buffers && !blit_to_screen_list.is_empty()) {
+		// Frame generation: the generated frames go to the screen first, half a frame before
+		// the real ones.
+		bool generated = false;
+		for (const KeyValue<int, Vector<RenderingServerTypes::BlitToScreen>> &E : blit_to_screen_list) {
+			generated = RSG::rasterizer->blit_generated_frames_to_screen(E.key, E.value.ptr(), E.value.size()) || generated;
+		}
+		if (generated) {
+			RSG::rasterizer->present_generated_frames();
+			// That present began a new GPU frame, whose slot holds the timings of an earlier
+			// render: hand them to the viewports, the end of the frame reads a slot without them.
+			for (uint32_t i = 0; i < RSG::utilities->get_captured_timestamps_count(); i++) {
+				String name = RSG::utilities->get_captured_timestamp_name(i);
+				if (name.begins_with("vp_")) {
+					handle_timestamp(name, RSG::utilities->get_captured_timestamp_cpu_time(i), RSG::utilities->get_captured_timestamp_gpu_time(i));
+				}
+			}
+		}
+
 		for (const KeyValue<int, Vector<RenderingServerTypes::BlitToScreen>> &E : blit_to_screen_list) {
 			RSG::rasterizer->blit_render_targets_to_screen(E.key, E.value.ptr(), E.value.size());
 		}

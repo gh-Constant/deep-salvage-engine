@@ -211,6 +211,138 @@ void MFXTemporalEffect::callback(RDD *p_driver, RDD::CommandBufferID p_command_b
 	CallbackArgs::free(&p_userdata);
 }
 
+#pragma mark - Frame Interpolation
+
+MFXFrameInterpolationContext::~MFXFrameInterpolationContext() {
+	if (interpolator) {
+		interpolator->release();
+	}
+	RenderingDevice *rd = RD::get_singleton();
+	if (previous_color.is_valid()) {
+		rd->free_rid(previous_color);
+	}
+	if (output.is_valid()) {
+		rd->free_rid(output);
+	}
+}
+
+MFXFrameInterpolationEffect::MFXFrameInterpolationEffect() {}
+MFXFrameInterpolationEffect::~MFXFrameInterpolationEffect() {}
+
+MFXFrameInterpolationContext *MFXFrameInterpolationEffect::create_context(const CreateParams &p_params) const {
+	ERR_FAIL_COND_V(!RD::get_singleton()->has_feature(RD::SUPPORTS_METALFX_FRAME_INTERPOLATION), nullptr);
+
+	RenderingDevice *rd = RD::get_singleton();
+	RenderingDeviceDriverMetal *rdd = (RenderingDeviceDriverMetal *)rd->get_device_driver();
+	PixelFormats &pf = rdd->get_pixel_formats();
+	MTL::Device *dev = rdd->get_device();
+
+	MFXFrameInterpolationContext *context = memnew(MFXFrameInterpolationContext);
+	context->input_size = p_params.input_size;
+	context->output_size = p_params.output_size;
+	context->color_format = p_params.color_format;
+	context->depth_format = p_params.depth_format;
+	context->motion_format = p_params.motion_format;
+
+	if (__builtin_available(macOS 26.0, iOS 26.0, tvOS 26.0, *)) {
+		NS::SharedPtr<MTLFX::FrameInterpolatorDescriptor> desc = NS::TransferPtr(MTLFX::FrameInterpolatorDescriptor::alloc()->init());
+		// Color in and out at the output size; depth and motion at the render size.
+		desc->setInputWidth((NS::UInteger)p_params.input_size.width);
+		desc->setInputHeight((NS::UInteger)p_params.input_size.height);
+		desc->setOutputWidth((NS::UInteger)p_params.output_size.width);
+		desc->setOutputHeight((NS::UInteger)p_params.output_size.height);
+		desc->setColorTextureFormat((MTL::PixelFormat)pf.getMTLPixelFormat(p_params.color_format));
+		desc->setOutputTextureFormat((MTL::PixelFormat)pf.getMTLPixelFormat(p_params.color_format));
+		desc->setDepthTextureFormat((MTL::PixelFormat)pf.getMTLPixelFormat(p_params.depth_format));
+		desc->setMotionTextureFormat((MTL::PixelFormat)pf.getMTLPixelFormat(p_params.motion_format));
+		context->interpolator = desc->newFrameInterpolator(dev);
+	}
+	if (context->interpolator == nullptr) {
+		memdelete(context);
+		ERR_FAIL_V_MSG(nullptr, "MetalFX: could not create the frame interpolator.");
+	}
+
+	RD::TextureFormat tf;
+	tf.format = p_params.color_format;
+	tf.width = p_params.output_size.width;
+	tf.height = p_params.output_size.height;
+	tf.usage_bits = RD::TEXTURE_USAGE_SAMPLING_BIT | RD::TEXTURE_USAGE_STORAGE_BIT | RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT | RD::TEXTURE_USAGE_CAN_COPY_TO_BIT | RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT;
+	context->previous_color = rd->texture_create(tf, RD::TextureView());
+	rd->set_resource_name(context->previous_color, "MetalFX frame interpolation: previous color");
+	context->output = rd->texture_create(tf, RD::TextureView());
+	rd->set_resource_name(context->output, "MetalFX frame interpolation: generated frame");
+
+	return context;
+}
+
+bool MFXFrameInterpolationEffect::process(MFXFrameInterpolationContext *p_ctx, RID p_color, const MFXFrameInterpolationInputs &p_inputs, uint64_t p_frame) {
+	RenderingDevice *rd = RD::get_singleton();
+	// Interpolate only between two consecutive frames, with this frame's depth and motion.
+	bool interpolate = p_ctx->last_frame != 0 && p_ctx->last_frame + 1 == p_frame && p_inputs.frame == p_frame && p_inputs.depth.is_valid() && p_inputs.motion.is_valid();
+
+	if (interpolate) {
+		CallbackArgs *userdata = args_allocator.alloc();
+		userdata->owner = this;
+		userdata->interpolator = p_ctx->interpolator;
+		userdata->color = RDD::TextureID(rd->get_driver_resource(RDC::DRIVER_RESOURCE_TEXTURE, p_color));
+		userdata->previous_color = RDD::TextureID(rd->get_driver_resource(RDC::DRIVER_RESOURCE_TEXTURE, p_ctx->previous_color));
+		userdata->depth = RDD::TextureID(rd->get_driver_resource(RDC::DRIVER_RESOURCE_TEXTURE, p_inputs.depth));
+		userdata->motion = RDD::TextureID(rd->get_driver_resource(RDC::DRIVER_RESOURCE_TEXTURE, p_inputs.motion));
+		userdata->output = RDD::TextureID(rd->get_driver_resource(RDC::DRIVER_RESOURCE_TEXTURE, p_ctx->output));
+		userdata->inputs = p_inputs;
+
+		RD::CallbackResource res[5] = {
+			{ .rid = p_color, .usage = RD::CALLBACK_RESOURCE_USAGE_TEXTURE_SAMPLE },
+			{ .rid = p_ctx->previous_color, .usage = RD::CALLBACK_RESOURCE_USAGE_TEXTURE_SAMPLE },
+			{ .rid = p_inputs.depth, .usage = RD::CALLBACK_RESOURCE_USAGE_TEXTURE_SAMPLE },
+			{ .rid = p_inputs.motion, .usage = RD::CALLBACK_RESOURCE_USAGE_TEXTURE_SAMPLE },
+			{ .rid = p_ctx->output, .usage = RD::CALLBACK_RESOURCE_USAGE_STORAGE_IMAGE_READ_WRITE },
+		};
+		rd->draw_command_begin_label("MetalFX Frame Interpolation");
+		rd->driver_callback_add((RDD::DriverCallback)MFXFrameInterpolationEffect::callback, userdata, VectorView<RD::CallbackResource>(res, 5));
+		rd->draw_command_end_label();
+	}
+
+	// This frame becomes the previous one of the next interpolation.
+	Vector3 size(p_ctx->output_size.width, p_ctx->output_size.height, 1);
+	rd->texture_copy(p_color, p_ctx->previous_color, Vector3(), Vector3(), size, 0, 0, 0, 0);
+	p_ctx->last_frame = p_frame;
+
+	return interpolate;
+}
+
+void MFXFrameInterpolationEffect::callback(RDD *p_driver, RDD::CommandBufferID p_command_buffer, CallbackArgs *p_userdata) {
+	MDCommandBufferBase *obj = (MDCommandBufferBase *)(p_command_buffer.id);
+	obj->end();
+
+	if (__builtin_available(macOS 26.0, iOS 26.0, tvOS 26.0, *)) {
+		const MFXFrameInterpolationInputs &in = p_userdata->inputs;
+		MTLFX::FrameInterpolator *fi = p_userdata->interpolator;
+		fi->setFence(obj->external_pass_fence());
+		fi->setColorTexture(reinterpret_cast<MTL::Texture *>(p_userdata->color.id));
+		fi->setPrevColorTexture(reinterpret_cast<MTL::Texture *>(p_userdata->previous_color.id));
+		fi->setDepthTexture(reinterpret_cast<MTL::Texture *>(p_userdata->depth.id));
+		fi->setMotionTexture(reinterpret_cast<MTL::Texture *>(p_userdata->motion.id));
+		fi->setOutputTexture(reinterpret_cast<MTL::Texture *>(p_userdata->output.id));
+		fi->setMotionVectorScaleX(in.motion_vector_scale.x);
+		fi->setMotionVectorScaleY(in.motion_vector_scale.y);
+		fi->setJitterOffsetX(in.jitter_offset.x);
+		fi->setJitterOffsetY(in.jitter_offset.y);
+		fi->setDeltaTime(in.delta_time);
+		fi->setNearPlane(in.near_plane);
+		fi->setFarPlane(in.far_plane);
+		fi->setFieldOfView(in.fov_degrees);
+		fi->setAspectRatio(in.aspect_ratio);
+		fi->setDepthReversed(true); // Godot uses reverse Z, as for the temporal scaler.
+		fi->setShouldResetHistory(in.reset);
+		MTL3::MDCommandBuffer *cmd = (MTL3::MDCommandBuffer *)(p_command_buffer.id);
+		fi->encodeToCommandBuffer(cmd->get_command_buffer());
+		obj->retain_resource(fi);
+	}
+
+	CallbackArgs::free(&p_userdata);
+}
+
 #endif
 
 #endif

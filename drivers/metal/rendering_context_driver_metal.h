@@ -92,6 +92,7 @@ public:
 		uint32_t height = 0;
 		DisplayServerEnums::VSyncMode vsync_mode = DisplayServerEnums::VSYNC_ENABLED;
 		double present_minimum_duration = 0.0;
+		double next_present_delay = 0.0; // One present only (frame generation pacing).
 		MTL::PixelFormat pixel_format = MTL::PixelFormatBGRA8Unorm;
 
 		// BT.2408 recommendation of 203 nits for HDR Reference White, rounded to 200

@@ -47,6 +47,8 @@
 template <typename T>
 class Vector;
 
+class RenderSceneBuffers;
+
 namespace RenderingServerTypes {
 
 /* TEXTURE API */
@@ -134,6 +136,8 @@ struct FrameProfileArea {
 
 struct BlitToScreen {
 	RID render_target;
+	// Frame generation (MetalFX): the 3D buffers of the viewport, when it generates frames.
+	RenderSceneBuffers *frame_generation_buffers = nullptr;
 	Rect2 src_rect = Rect2(0.0, 0.0, 1.0, 1.0);
 	Rect2i dst_rect;
 

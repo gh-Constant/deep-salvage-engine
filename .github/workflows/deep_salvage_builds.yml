@@ -37,6 +37,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Restore the SCons cache
+        uses: ./.github/actions/godot-cache-restore
+        with:
+          cache-name: ds-windows-editor
+        continue-on-error: true
+
       - name: Setup Python and SCons
         uses: ./.github/actions/godot-deps
 
@@ -64,6 +70,12 @@ jobs:
             angle=no
             debug_symbols=no
             windows_subsystem=console
+
+      - name: Save the SCons cache
+        uses: ./.github/actions/godot-cache-save
+        with:
+          cache-name: ds-windows-editor
+        continue-on-error: true
 
       - name: Add the Streamline runtime and package
         shell: bash
@@ -97,6 +109,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Restore the SCons cache
+        uses: ./.github/actions/godot-cache-restore
+        with:
+          cache-name: ds-macos-editor
+        continue-on-error: true
+
       - name: Setup Python and SCons
         uses: ./.github/actions/godot-deps
 
@@ -110,6 +128,12 @@ jobs:
             vulkan=no
             accesskit=no
             debug_symbols=no
+
+      - name: Save the SCons cache
+        uses: ./.github/actions/godot-cache-save
+        with:
+          cache-name: ds-macos-editor
+        continue-on-error: true
 
       - name: Package as an app
         run: |
@@ -135,6 +159,12 @@ jobs:
       SCONS_CACHE_MSVC_CONFIG: true
     steps:
       - uses: actions/checkout@v4
+
+      - name: Restore the SCons cache
+        uses: ./.github/actions/godot-cache-restore
+        with:
+          cache-name: ds-windows-template
+        continue-on-error: true
 
       - name: Setup Python and SCons
         uses: ./.github/actions/godot-deps
@@ -163,6 +193,12 @@ jobs:
             angle=no
             debug_symbols=no
 
+      - name: Save the SCons cache
+        uses: ./.github/actions/godot-cache-save
+        with:
+          cache-name: ds-windows-template
+        continue-on-error: true
+
       - name: Name it as the exporter looks for it
         shell: bash
         run: |
@@ -186,6 +222,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Restore the SCons cache
+        uses: ./.github/actions/godot-cache-restore
+        with:
+          cache-name: ds-macos-template
+        continue-on-error: true
+
       - name: Setup Python and SCons
         uses: ./.github/actions/godot-deps
 
@@ -199,6 +241,12 @@ jobs:
             vulkan=no
             accesskit=no
             debug_symbols=no
+
+      - name: Save the SCons cache
+        uses: ./.github/actions/godot-cache-save
+        with:
+          cache-name: ds-macos-template
+        continue-on-error: true
 
       - name: Package as macos.zip
         run: |

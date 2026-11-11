@@ -115,6 +115,17 @@ protected:
 	static RendererCompositorRD *singleton;
 
 	BlitPipelines _get_blit_pipelines_for_format(RenderingDevice::FramebufferFormatID format);
+	// p_textures (optional) replaces the render targets' textures: the generated frames.
+	void _blit_to_screen(DisplayServerEnums::WindowID p_screen, const RenderingServerTypes::BlitToScreen *p_render_targets, int p_amount, const RID *p_textures);
+
+#ifdef METAL_MFXTEMPORAL_ENABLED
+	RendererRD::MFXFrameInterpolationEffect *mfx_frame_interpolation = nullptr;
+#endif
+	// Frame generation pacing: screens that drew a generated frame, and the smoothed time between
+	// two rendered frames.
+	LocalVector<DisplayServerEnums::WindowID> generated_screens;
+	uint64_t last_generated_present_usec = 0;
+	double generated_frame_interval = 0.0;
 	float _compute_reference_multiplier(RD::ColorSpace p_color_space, const float p_reference_luminance, const float p_linear_luminance_scale);
 
 public:
@@ -137,6 +148,8 @@ public:
 	virtual void initialize() override;
 	virtual void begin_frame(double frame_step) override;
 	virtual void blit_render_targets_to_screen(DisplayServerEnums::WindowID p_screen, const RenderingServerTypes::BlitToScreen *p_render_targets, int p_amount) override;
+	virtual bool blit_generated_frames_to_screen(DisplayServerEnums::WindowID p_screen, const RenderingServerTypes::BlitToScreen *p_render_targets, int p_amount) override;
+	virtual void present_generated_frames() override;
 
 	virtual bool is_opengl() override { return false; }
 	virtual void gl_end_frame(bool p_swap_buffers) override {}

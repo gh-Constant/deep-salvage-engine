@@ -95,6 +95,10 @@ private:
 #ifdef METAL_ENABLED
 	RendererRD::MFXSpatialContext *mfx_spatial_context = nullptr;
 #endif
+#ifdef METAL_MFXTEMPORAL_ENABLED
+	RendererRD::MFXFrameInterpolationContext *mfx_frame_interpolation_context = nullptr;
+	RendererRD::MFXFrameInterpolationInputs mfx_frame_interpolation_inputs;
+#endif
 
 	// Aliasing settings
 	RSE::ViewportMSAA msaa_3d = RSE::VIEWPORT_MSAA_DISABLED;
@@ -216,6 +220,13 @@ public:
 #ifdef METAL_ENABLED
 	void ensure_mfx(RendererRD::MFXSpatialEffect *p_effect);
 	_FORCE_INLINE_ RendererRD::MFXSpatialContext *get_mfx_spatial_context() const { return mfx_spatial_context; }
+#endif
+#ifdef METAL_MFXTEMPORAL_ENABLED
+	// Frame interpolation: the 3D render leaves its inputs, the screen blit generates the frame.
+	void set_mfx_frame_interpolation_inputs(const RendererRD::MFXFrameInterpolationInputs &p_inputs) { mfx_frame_interpolation_inputs = p_inputs; }
+	_FORCE_INLINE_ const RendererRD::MFXFrameInterpolationInputs &get_mfx_frame_interpolation_inputs() const { return mfx_frame_interpolation_inputs; }
+	/// The interpolator of this viewport, (re)created when the sizes or formats change.
+	RendererRD::MFXFrameInterpolationContext *ensure_mfx_frame_interpolation(RendererRD::MFXFrameInterpolationEffect *p_effect, RD::DataFormat p_color_format);
 #endif
 
 	// Named Textures

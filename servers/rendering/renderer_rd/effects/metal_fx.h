@@ -44,6 +44,7 @@
 namespace MTLFX {
 class SpatialScalerBase;
 class TemporalScalerBase;
+class FrameInterpolator;
 } //namespace MTLFX
 
 namespace RendererRD {
@@ -169,6 +170,80 @@ public:
 	};
 
 	void process(MFXTemporalContext *p_ctx, Params p_params);
+};
+
+/// What the 3D render of a frame hands to frame interpolation (MetalFX temporal path only).
+/// Depth and motion are at the internal (render) size; motion as the temporal scaler reads it.
+struct MFXFrameInterpolationInputs {
+	RID depth;
+	RID motion;
+	Vector2 motion_vector_scale;
+	Vector2 jitter_offset;
+	float near_plane = 0.05f;
+	float far_plane = 4000.0f;
+	float fov_degrees = 75.0f; // Vertical.
+	float aspect_ratio = 1.0f;
+	float delta_time = 0.0f;
+	bool reset = false;
+	uint64_t frame = 0; // RendererCompositor frame number of the render that wrote these.
+};
+
+/// One MetalFX frame interpolator for one viewport: the generated frame between the previous
+/// final image of the render target and this frame's, before the real one is presented.
+struct MFXFrameInterpolationContext {
+	MTLFX::FrameInterpolator *interpolator = nullptr;
+	Size2i input_size;
+	Size2i output_size;
+	RDD::DataFormat color_format = RDD::DATA_FORMAT_MAX;
+	RDD::DataFormat depth_format = RDD::DATA_FORMAT_MAX;
+	RDD::DataFormat motion_format = RDD::DATA_FORMAT_MAX;
+	RID previous_color; // The last real frame, copied after each interpolation.
+	RID output; // The generated frame.
+	uint64_t last_frame = 0; // Frame of the previous real image in previous_color (0: none).
+
+	MFXFrameInterpolationContext() = default;
+	~MFXFrameInterpolationContext();
+};
+
+class MFXFrameInterpolationEffect {
+	struct CallbackArgs {
+		MFXFrameInterpolationEffect *owner = nullptr;
+		MTLFX::FrameInterpolator *interpolator = nullptr;
+		RDD::TextureID color;
+		RDD::TextureID previous_color;
+		RDD::TextureID depth;
+		RDD::TextureID motion;
+		RDD::TextureID output;
+		MFXFrameInterpolationInputs inputs;
+
+		static void free(CallbackArgs **p_args) {
+			(*p_args)->owner->args_allocator.free(*p_args);
+			*p_args = nullptr;
+		}
+	};
+
+	PagedAllocator<CallbackArgs, true, 16> args_allocator;
+
+	static void callback(RDD *p_driver, RDD::CommandBufferID p_command_buffer, CallbackArgs *p_userdata);
+
+public:
+	struct CreateParams {
+		Size2i input_size;
+		Size2i output_size;
+		RDD::DataFormat color_format;
+		RDD::DataFormat depth_format;
+		RDD::DataFormat motion_format;
+	};
+
+	MFXFrameInterpolationContext *create_context(const CreateParams &p_params) const;
+
+	/// Records the generated frame between the context's previous color and p_color into the
+	/// context's output, then copies p_color as the next previous color. Returns false (and only
+	/// keeps p_color) when there is no previous frame to interpolate from.
+	bool process(MFXFrameInterpolationContext *p_ctx, RID p_color, const MFXFrameInterpolationInputs &p_inputs, uint64_t p_frame);
+
+	MFXFrameInterpolationEffect();
+	~MFXFrameInterpolationEffect();
 };
 
 #endif

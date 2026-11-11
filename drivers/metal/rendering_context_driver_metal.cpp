@@ -253,8 +253,16 @@ public:
 		count--;
 		front = (front + 1) % frame_buffers.size();
 
+		double delay = next_present_delay;
+		next_present_delay = 0.0;
+
 		if (drawable != nullptr) {
-			if (vsync_mode != DisplayServerEnums::VSYNC_DISABLED) {
+			if (delay > 0.0) {
+				// Frame generation: keep the previous image (generated or real) on screen for
+				// half a frame.
+				double duration = vsync_mode != DisplayServerEnums::VSYNC_DISABLED ? MAX(delay, present_minimum_duration) : delay;
+				p_cmd_buffer->get_command_buffer()->presentDrawableAfterMinimumDuration(drawable, duration);
+			} else if (vsync_mode != DisplayServerEnums::VSYNC_DISABLED) {
 				p_cmd_buffer->get_command_buffer()->presentDrawableAfterMinimumDuration(drawable, present_minimum_duration);
 			} else {
 				p_cmd_buffer->get_command_buffer()->presentDrawable(drawable);

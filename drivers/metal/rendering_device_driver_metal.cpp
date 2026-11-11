@@ -1062,6 +1062,12 @@ void RenderingDeviceDriverMetal::swap_chain_set_max_fps(SwapChainID p_swap_chain
 	metal_surface->set_max_fps(p_max_fps);
 }
 
+void RenderingDeviceDriverMetal::swap_chain_set_next_present_delay(SwapChainID p_swap_chain, double p_seconds) {
+	SwapChain *swap_chain = (SwapChain *)(p_swap_chain.id);
+	RenderingContextDriverMetal::Surface *metal_surface = (RenderingContextDriverMetal::Surface *)(swap_chain->surface);
+	metal_surface->next_present_delay = p_seconds;
+}
+
 void RenderingDeviceDriverMetal::swap_chain_free(SwapChainID p_swap_chain) {
 	SwapChain *swap_chain = (SwapChain *)(p_swap_chain.id);
 	if (sync_mode != HazardTracking) {
@@ -2803,6 +2809,8 @@ bool RenderingDeviceDriverMetal::has_feature(Features p_feature) {
 			return device_properties->features.metal_fx_spatial;
 		case SUPPORTS_METALFX_TEMPORAL:
 			return device_properties->features.metal_fx_temporal;
+		case SUPPORTS_METALFX_FRAME_INTERPOLATION:
+			return device_properties->features.metal_fx_frame_interpolation;
 		case SUPPORTS_HDR_OUTPUT:
 			return true;
 		case SUPPORTS_IMAGE_ATOMIC_32_BIT:

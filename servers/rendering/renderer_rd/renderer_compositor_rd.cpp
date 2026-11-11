@@ -41,6 +41,73 @@
 #include "servers/rendering/rendering_server_types.h"
 
 void RendererCompositorRD::blit_render_targets_to_screen(DisplayServerEnums::WindowID p_screen, const RenderingServerTypes::BlitToScreen *p_render_targets, int p_amount) {
+	_blit_to_screen(p_screen, p_render_targets, p_amount, nullptr);
+}
+
+bool RendererCompositorRD::blit_generated_frames_to_screen(DisplayServerEnums::WindowID p_screen, const RenderingServerTypes::BlitToScreen *p_render_targets, int p_amount) {
+#ifdef METAL_MFXTEMPORAL_ENABLED
+	if (!RD::get_singleton()->has_feature(RD::SUPPORTS_METALFX_FRAME_INTERPOLATION)) {
+		return false;
+	}
+	LocalVector<RID> textures;
+	textures.resize(p_amount);
+	bool generated = false;
+	for (int i = 0; i < p_amount; i++) {
+		RID rd_texture = texture_storage->render_target_get_rd_texture(p_render_targets[i].render_target);
+		textures[i] = rd_texture;
+		RenderSceneBuffersRD *rb = Object::cast_to<RenderSceneBuffersRD>(p_render_targets[i].frame_generation_buffers);
+		if (rb == nullptr || rd_texture.is_null() || rb->get_render_target() != p_render_targets[i].render_target) {
+			continue;
+		}
+		RD::TextureFormat tf = RD::get_singleton()->texture_get_format(rd_texture);
+		if (Size2i(tf.width, tf.height) != rb->get_target_size() || tf.array_layers != 1) {
+			continue;
+		}
+		if (mfx_frame_interpolation == nullptr) {
+			mfx_frame_interpolation = memnew(RendererRD::MFXFrameInterpolationEffect);
+		}
+		RendererRD::MFXFrameInterpolationContext *ctx = rb->ensure_mfx_frame_interpolation(mfx_frame_interpolation, tf.format);
+		if (ctx != nullptr && mfx_frame_interpolation->process(ctx, rd_texture, rb->get_mfx_frame_interpolation_inputs(), frame)) {
+			textures[i] = ctx->output;
+			generated = true;
+		}
+	}
+	if (!generated) {
+		return false;
+	}
+	_blit_to_screen(p_screen, p_render_targets, p_amount, textures.ptr());
+	generated_screens.push_back(p_screen);
+	return true;
+#else
+	return false;
+#endif
+}
+
+void RendererCompositorRD::present_generated_frames() {
+	// Each image (generated, then real) stays on screen half the time between two renders.
+	uint64_t now = OS::get_singleton()->get_ticks_usec();
+	double interval = double(now - last_generated_present_usec) / 1000000.0;
+	if (last_generated_present_usec == 0 || interval > 0.25) {
+		generated_frame_interval = 0.0; // First generated frame, or after a pause: no pacing yet.
+	} else if (generated_frame_interval <= 0.0) {
+		generated_frame_interval = interval;
+	} else {
+		generated_frame_interval += (interval - generated_frame_interval) * 0.1;
+	}
+	last_generated_present_usec = now;
+	double half = generated_frame_interval * 0.5;
+
+	for (DisplayServerEnums::WindowID screen : generated_screens) {
+		RD::get_singleton()->screen_set_next_present_delay(screen, half);
+	}
+	RD::get_singleton()->swap_buffers(true);
+	for (DisplayServerEnums::WindowID screen : generated_screens) {
+		RD::get_singleton()->screen_set_next_present_delay(screen, half);
+	}
+	generated_screens.clear();
+}
+
+void RendererCompositorRD::_blit_to_screen(DisplayServerEnums::WindowID p_screen, const RenderingServerTypes::BlitToScreen *p_render_targets, int p_amount, const RID *p_textures) {
 	Error err = RD::get_singleton()->screen_prepare_for_drawing(p_screen);
 	if (err != OK) {
 		// Window is minimized and does not have valid swapchain, skip drawing without printing errors.
@@ -59,7 +126,7 @@ void RendererCompositorRD::blit_render_targets_to_screen(DisplayServerEnums::Win
 	const float reference_multiplier = _compute_reference_multiplier(color_space, reference_luminance, linear_luminance_scale);
 
 	for (int i = 0; i < p_amount; i++) {
-		RID rd_texture = texture_storage->render_target_get_rd_texture(p_render_targets[i].render_target);
+		RID rd_texture = p_textures != nullptr ? p_textures[i] : texture_storage->render_target_get_rd_texture(p_render_targets[i].render_target);
 		ERR_CONTINUE(rd_texture.is_null());
 
 		BlitMode mode = p_render_targets[i].lens_distortion.apply ? BLIT_MODE_LENS : (p_render_targets[i].multi_view.use_layer ? BLIT_MODE_USE_LAYER : BLIT_MODE_NORMAL);
@@ -176,6 +243,12 @@ void RendererCompositorRD::initialize() {
 uint64_t RendererCompositorRD::frame = 1;
 
 void RendererCompositorRD::finalize() {
+#ifdef METAL_MFXTEMPORAL_ENABLED
+	if (mfx_frame_interpolation) {
+		memdelete(mfx_frame_interpolation);
+		mfx_frame_interpolation = nullptr;
+	}
+#endif
 	texture_storage->_tex_blit_shader_free();
 	memdelete(scene);
 	memdelete(canvas);

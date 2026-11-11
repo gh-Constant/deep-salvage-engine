@@ -160,6 +160,13 @@ void RenderSceneBuffersRD::cleanup() {
 		mfx_spatial_context = nullptr;
 	}
 #endif
+#ifdef METAL_MFXTEMPORAL_ENABLED
+	if (mfx_frame_interpolation_context) {
+		memdelete(mfx_frame_interpolation_context);
+		mfx_frame_interpolation_context = nullptr;
+	}
+	mfx_frame_interpolation_inputs = RendererRD::MFXFrameInterpolationInputs();
+#endif
 }
 
 void RenderSceneBuffersRD::configure(const RenderSceneBuffersConfiguration *p_config) {
@@ -291,6 +298,30 @@ void RenderSceneBuffersRD::ensure_mfx(RendererRD::MFXSpatialEffect *p_effect) {
 	};
 
 	mfx_spatial_context = p_effect->create_context(params);
+}
+#endif
+
+#ifdef METAL_MFXTEMPORAL_ENABLED
+RendererRD::MFXFrameInterpolationContext *RenderSceneBuffersRD::ensure_mfx_frame_interpolation(RendererRD::MFXFrameInterpolationEffect *p_effect, RD::DataFormat p_color_format) {
+	RD::DataFormat depth_format = get_depth_format(false, false, get_can_be_storage());
+	RD::DataFormat motion_format = get_velocity_format();
+	RendererRD::MFXFrameInterpolationContext *ctx = mfx_frame_interpolation_context;
+	if (ctx && (ctx->input_size != internal_size || ctx->output_size != target_size || ctx->color_format != p_color_format || ctx->depth_format != depth_format || ctx->motion_format != motion_format)) {
+		memdelete(ctx);
+		ctx = nullptr;
+		mfx_frame_interpolation_context = nullptr;
+	}
+	if (ctx == nullptr) {
+		RendererRD::MFXFrameInterpolationEffect::CreateParams params = {
+			.input_size = internal_size,
+			.output_size = target_size,
+			.color_format = p_color_format,
+			.depth_format = depth_format,
+			.motion_format = motion_format,
+		};
+		mfx_frame_interpolation_context = p_effect->create_context(params);
+	}
+	return mfx_frame_interpolation_context;
 }
 #endif
 

@@ -80,6 +80,11 @@ public:
 	virtual void begin_frame(double frame_step) = 0;
 
 	virtual void blit_render_targets_to_screen(DisplayServerEnums::WindowID p_screen, const RenderingServerTypes::BlitToScreen *p_render_targets, int p_amount) = 0;
+	/// Frame generation: draws the generated frames of p_render_targets to the screen. Returns
+	/// false (and draws nothing) when none of them has one this frame.
+	virtual bool blit_generated_frames_to_screen(DisplayServerEnums::WindowID p_screen, const RenderingServerTypes::BlitToScreen *p_render_targets, int p_amount) { return false; }
+	/// Presents what blit_generated_frames_to_screen drew, half a frame before the real one.
+	virtual void present_generated_frames() {}
 
 	virtual bool is_opengl() = 0;
 	virtual void gl_end_frame(bool p_swap_buffers) = 0;

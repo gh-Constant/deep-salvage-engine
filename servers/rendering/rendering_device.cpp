@@ -9790,6 +9790,14 @@ void RenderingDevice::finalize() {
 	ERR_FAIL_COND(reverse_dependency_map.size());
 }
 
+void RenderingDevice::screen_set_next_present_delay(DisplayServerEnums::WindowID p_screen, double p_seconds) {
+	ERR_RENDER_THREAD_GUARD();
+	const RDD::SwapChainID *swap_chain = screen_swap_chains.getptr(p_screen);
+	if (swap_chain != nullptr) {
+		driver->swap_chain_set_next_present_delay(*swap_chain, p_seconds);
+	}
+}
+
 void RenderingDevice::_set_max_fps(int p_max_fps) {
 	for (const KeyValue<DisplayServerEnums::WindowID, RDD::SwapChainID> &it : screen_swap_chains) {
 		driver->swap_chain_set_max_fps(it.value, p_max_fps);
@@ -10545,6 +10553,7 @@ void RenderingDevice::_bind_methods() {
 
 	BIND_ENUM_CONSTANT(SUPPORTS_METALFX_SPATIAL);
 	BIND_ENUM_CONSTANT(SUPPORTS_METALFX_TEMPORAL);
+	BIND_ENUM_CONSTANT(SUPPORTS_METALFX_FRAME_INTERPOLATION);
 	BIND_ENUM_CONSTANT(SUPPORTS_BUFFER_DEVICE_ADDRESS);
 	BIND_ENUM_CONSTANT(SUPPORTS_IMAGE_ATOMIC_32_BIT);
 	BIND_ENUM_CONSTANT(SUPPORTS_RAY_QUERY);

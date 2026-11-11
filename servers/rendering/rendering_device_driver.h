@@ -491,6 +491,9 @@ public:
 	// Tells the swapchain the max_fps so it can use the proper frame pacing.
 	// Android uses this with Swappy library. Some implementations or platforms may ignore this hint.
 	virtual void swap_chain_set_max_fps(SwapChainID p_swap_chain, int p_max_fps) {}
+	// The next present waits until the previous image has been on screen for p_seconds (frame
+	// generation pacing). Drivers without it present as usual.
+	virtual void swap_chain_set_next_present_delay(SwapChainID p_swap_chain, double p_seconds) {}
 
 	// Wait until all rendering associated to the swap chain is finished before deleting it.
 	virtual void swap_chain_free(SwapChainID p_swap_chain) = 0;
