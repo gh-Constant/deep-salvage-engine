@@ -92,10 +92,13 @@ bool RendererCompositorRD::blit_generated_frames_to_screen(DisplayServerEnums::W
 }
 
 void RendererCompositorRD::present_generated_frames() {
-	// Each image (generated, then real) stays on screen half the time between two renders.
+	// As Apple's present thread: the generated frame goes out as soon as it is ready, the real one
+	// waits a little under half the time between two renders. Under half, so the wait never holds
+	// the frame rate down by itself: a wait of exactly half the measured interval would keep any
+	// slow interval forever.
 	uint64_t now = OS::get_singleton()->get_ticks_usec();
 	double interval = double(now - last_generated_present_usec) / 1000000.0;
-	if (last_generated_present_usec == 0 || interval > 0.25) {
+	if (last_generated_present_usec == 0 || interval > 0.1) {
 		generated_frame_interval = 0.0; // First generated frame, or after a pause: no pacing yet.
 	} else if (generated_frame_interval <= 0.0) {
 		generated_frame_interval = interval;
@@ -103,14 +106,11 @@ void RendererCompositorRD::present_generated_frames() {
 		generated_frame_interval += (interval - generated_frame_interval) * 0.1;
 	}
 	last_generated_present_usec = now;
-	double half = generated_frame_interval * 0.5;
 
-	for (DisplayServerEnums::WindowID screen : generated_screens) {
-		RD::get_singleton()->screen_set_next_present_delay(screen, half);
-	}
 	RD::get_singleton()->swap_buffers(true);
+	double real_delay = generated_frame_interval * (31.0 / 64.0);
 	for (DisplayServerEnums::WindowID screen : generated_screens) {
-		RD::get_singleton()->screen_set_next_present_delay(screen, half);
+		RD::get_singleton()->screen_set_next_present_delay(screen, real_delay);
 	}
 	generated_screens.clear();
 }
