@@ -1620,14 +1620,15 @@ Error RenderingDevice::buffer_update(RID p_buffer, uint32_t p_offset, uint32_t p
 namespace {
 void native_compute_driver_callback(RenderingDeviceDriver *p_driver, RenderingDeviceDriver::CommandBufferID p_command_buffer, void *p_userdata) {
 	const Callable &callback = *static_cast<const Callable *>(p_userdata);
-	callback.call(p_driver->command_buffer_get_native_handle(p_command_buffer));
+	// NVIDIA's fork returns the handle as a pointer (Streamline needs it on D3D12 too); scripts get an integer.
+	callback.call((uint64_t)(uintptr_t)p_driver->command_buffer_get_native_handle(p_command_buffer));
 }
 } //namespace
 
 Error RenderingDevice::native_compute_callback_add(const Callable &p_callback, const TypedArray<RID> &p_sampled_textures, const TypedArray<RID> &p_storage_textures) {
 	ERR_RENDER_THREAD_GUARD_V(ERR_UNAVAILABLE);
 	ERR_FAIL_COND_V(!p_callback.is_valid(), ERR_INVALID_PARAMETER);
-	ERR_FAIL_COND_V_MSG(driver->command_buffer_get_native_handle(frames[frame].command_buffer) == 0, ERR_UNAVAILABLE, "Native compute callbacks are currently implemented only for Vulkan.");
+	ERR_FAIL_COND_V_MSG(driver->get_api_name() != "Vulkan", ERR_UNAVAILABLE, "Native compute callbacks are currently implemented only for Vulkan.");
 	LocalVector<CallbackResource> resources;
 	for (int i = 0; i < p_sampled_textures.size(); ++i) {
 		CallbackResource resource;
