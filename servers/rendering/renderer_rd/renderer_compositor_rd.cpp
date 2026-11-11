@@ -30,6 +30,8 @@
 
 #include "renderer_compositor_rd.h"
 
+#include "servers/rendering/renderer_rd/effects/copy_effects.h"
+
 #include "core/config/engine.h"
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
@@ -70,6 +72,12 @@ bool RendererCompositorRD::blit_generated_frames_to_screen(DisplayServerEnums::W
 		if (ctx != nullptr && mfx_frame_interpolation->process(ctx, rd_texture, rb->get_mfx_frame_interpolation_inputs(), frame)) {
 			textures[i] = ctx->output;
 			generated = true;
+			// Debug (GODOT_MFX_FRAME_GENERATION_DEBUG=generated): the generated frame also replaces
+			// the render target, so viewport captures read it.
+			static const bool show_generated = OS::get_singleton()->get_environment("GODOT_MFX_FRAME_GENERATION_DEBUG") == "generated";
+			if (show_generated) {
+				RendererRD::CopyEffects::get_singleton()->copy_to_rect(ctx->output, rd_texture, Rect2i(0, 0, tf.width, tf.height), false, false, false, tf.format == RD::DATA_FORMAT_R8G8B8A8_UNORM);
+			}
 		}
 	}
 	if (!generated) {
