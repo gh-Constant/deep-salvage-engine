@@ -31,6 +31,8 @@
 #include "rendering_context_driver_metal.h"
 
 #include "core/os/os.h"
+#include "core/os/mutex.h"
+#include "core/templates/rb_map.h"
 #include "core/templates/sort_array.h"
 #include "drivers/metal/metal3_objects.h"
 #include "drivers/metal/metal_objects_shared.h"
@@ -146,6 +148,50 @@ public:
 	}
 };
 
+// Debug (GODOT_MTL_PRESENT_LOG=1): when each drawable reached the screen, summed up every 2 s as
+// "PRESENTS shown N dropped N | interval ms: count ..." (frame pacing, frame generation).
+class PresentLog {
+	BinaryMutex mutex;
+	double start = 0.0;
+	double last = 0.0;
+	uint32_t dropped = 0;
+	RBMap<int, int> intervals; // Tenths of a millisecond -> count.
+
+public:
+	static PresentLog *get() {
+		static PresentLog *log = OS::get_singleton()->get_environment("GODOT_MTL_PRESENT_LOG") == "1" ? memnew(PresentLog) : nullptr;
+		return log;
+	}
+
+	void add(double p_presented_time) {
+		MutexLock lock(mutex);
+		if (p_presented_time <= 0.0) {
+			dropped++; // Replaced before it was shown.
+			return;
+		}
+		if (last > 0.0) {
+			intervals[int(Math::round((p_presented_time - last) * 10000.0))]++;
+		}
+		last = p_presented_time;
+		if (start == 0.0) {
+			start = p_presented_time;
+		}
+		if (p_presented_time - start < 2.0) {
+			return;
+		}
+		int shown = 0;
+		String text;
+		for (const KeyValue<int, int> &E : intervals) {
+			shown += E.value;
+			text += vformat(" %.1f:%d", E.key / 10.0, E.value);
+		}
+		print_line(vformat("PRESENTS shown %d dropped %d | interval ms:count%s", shown, dropped, text));
+		intervals.clear();
+		dropped = 0;
+		start = p_presented_time;
+	}
+};
+
 class API_AVAILABLE(macos(11.0), ios(14.0), tvos(14.0)) SurfaceLayer final : public RenderingContextDriverMetal::Surface {
 	CA::MetalLayer *layer = nullptr;
 	LocalVector<MDFrameBufferLayer> frame_buffers;
@@ -257,6 +303,9 @@ public:
 		next_present_delay = 0.0;
 
 		if (drawable != nullptr) {
+			if (PresentLog *log = PresentLog::get()) {
+				drawable->addPresentedHandler([log](MTL::Drawable *p_drawable) { log->add(p_drawable->presentedTime()); });
+			}
 			if (delay > 0.0) {
 				// Frame generation: keep the previous image (generated or real) on screen for
 				// half a frame.
