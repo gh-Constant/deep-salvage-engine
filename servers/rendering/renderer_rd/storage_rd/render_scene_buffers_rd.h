@@ -331,6 +331,10 @@ public:
 	_FORCE_INLINE_ RID get_upscaled_layer(const uint32_t p_layer) {
 		return get_texture_slice(RB_SCOPE_BUFFERS, RB_TEX_COLOR_UPSCALED, p_layer, 0);
 	}
+	// NVIDIA's name for the same slice (its DLSS / path tracing code calls it).
+	_FORCE_INLINE_ RID get_upscaled_texture(const uint32_t p_layer) {
+		return get_upscaled_layer(p_layer);
+	}
 
 	// Velocity, currently only used by TAA (Clustered) but we'll be using this in other places soon too.
 
