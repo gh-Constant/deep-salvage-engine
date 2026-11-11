@@ -1,5 +1,6 @@
 name: 🔗 GHA
-on: [push, pull_request, merge_group, workflow_dispatch]
+# Deep Salvage fork: upstream CI by hand only (deep_salvage_builds.yml builds the editors).
+on: [workflow_dispatch]
 
 concurrency:
   group: ${{ github.workflow }}|${{ github.ref_name }}

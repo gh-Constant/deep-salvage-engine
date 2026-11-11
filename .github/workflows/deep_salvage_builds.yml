@@ -1,0 +1,144 @@
+# Deep Salvage engine: NVIDIA's Godot fork (path tracing, DLSS, DLAA, Reflex and frame
+# generation through Streamline) plus built-in FSR 3.1.6 (SemiRealProductions' port of
+# HydrogenC's godotengine/godot#111631 on Bastiaan Olij's custom upscaler hook, #114670).
+#
+# Builds the editors the game runs on and publishes them as a release:
+# - Windows x86_64: DLSS (Streamline runtime DLLs next to the exe) and FSR 3 (Vulkan);
+# - macOS arm64: Metal (MetalFX). DLSS and FSR 3 are Windows / Linux only.
+# The upstream Godot CI (runner.yml) only runs by hand on this fork.
+
+name: Deep Salvage engine builds
+
+on:
+  push:
+    branches: [deep-salvage]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}|${{ github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  PYTHONIOENCODING: utf8
+  # Streamline runtime matching thirdparty/streamline/include/sl_version.h.
+  STREAMLINE_VERSION: v2.10.0
+
+jobs:
+  windows:
+    name: Windows editor (DLSS, FSR 3)
+    runs-on: windows-latest
+    timeout-minutes: 180
+    env:
+      SCONS_CACHE_MSVC_CONFIG: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python and SCons
+        uses: ./.github/actions/godot-deps
+
+      - name: Download Direct3D 12 SDK components
+        id: d3d12
+        shell: sh
+        run: |
+          if python ./misc/scripts/install_d3d12_sdk_windows.py; then
+            echo "ENABLED=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Direct3D 12 SDK installation failed, building Vulkan only."
+            echo "ENABLED=no" >> "$GITHUB_OUTPUT"
+          fi
+        continue-on-error: true
+
+      - name: Build
+        uses: ./.github/actions/godot-build
+        with:
+          platform: windows
+          target: editor
+          scons-flags: >-
+            use_streamline=yes
+            d3d12=${{ steps.d3d12.outputs.ENABLED || 'no' }}
+            accesskit=no
+            angle=no
+            debug_symbols=no
+            windows_subsystem=console
+
+      - name: Add the Streamline runtime and package
+        shell: bash
+        run: |
+          curl -fsSL -o streamline.zip \
+            "https://github.com/NVIDIA-RTX/Streamline/releases/download/${STREAMLINE_VERSION}/streamline-sdk-${STREAMLINE_VERSION}.zip"
+          unzip -q streamline.zip -d streamline
+          out=deep-salvage-engine-windows
+          mkdir -p "$out"
+          cp bin/godot.windows.editor.x86_64*.exe "$out/"
+          # Loaded from next to the exe (LoadLibraryA): the signed production DLLs of bin/x64.
+          interposer=$(find streamline -path '*bin/x64/sl.interposer.dll' -not -path '*development*' | head -1)
+          if [ -z "$interposer" ]; then
+            echo "::error::sl.interposer.dll not found"; find streamline -name '*.dll' | head -40; exit 1
+          fi
+          cp "$(dirname "$interposer")"/*.dll "$out/"
+          cp LICENSE.txt COPYRIGHT.txt "$out/"
+          7z a -tzip "$out.zip" "$out" > /dev/null
+          ls -la "$out"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deep-salvage-engine-windows
+          path: deep-salvage-engine-windows.zip
+          retention-days: 30
+
+  macos:
+    name: macOS editor (Metal)
+    runs-on: macos-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python and SCons
+        uses: ./.github/actions/godot-deps
+
+      - name: Build
+        uses: ./.github/actions/godot-build
+        with:
+          platform: macos
+          target: editor
+          scons-flags: >-
+            arch=arm64
+            vulkan=no
+            accesskit=no
+            debug_symbols=no
+
+      - name: Package as an app
+        run: |
+          app="Deep Salvage Engine.app"
+          cp -R misc/dist/macos_tools.app "$app"
+          mkdir -p "$app/Contents/MacOS"
+          cp bin/godot.macos.editor.arm64 "$app/Contents/MacOS/Godot"
+          chmod +x "$app/Contents/MacOS/Godot"
+          codesign --force --deep --sign - "$app"
+          ditto -c -k --keepParent "$app" deep-salvage-engine-macos.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deep-salvage-engine-macos
+          path: deep-salvage-engine-macos.zip
+          retention-days: 30
+
+  release:
+    name: Publish the release
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="build-$(date -u +%Y%m%d)-${GITHUB_SHA::8}"
+          gh release create "$tag" dist/*.zip --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Deep Salvage engine $tag" \
+            --notes "Godot 4.8-dev, NVIDIA fork (DLSS, Reflex, frame generation) + FSR 3.1.6. Commit ${GITHUB_SHA}."
