@@ -2,9 +2,13 @@
 # generation through Streamline) plus built-in FSR 3.1.6 (SemiRealProductions' port of
 # HydrogenC's godotengine/godot#111631 on Bastiaan Olij's custom upscaler hook, #114670).
 #
-# Builds the editors the game runs on and publishes them as a release:
+# Builds the editors the game runs on, and the release export templates the game is exported
+# with, and publishes them as a release:
 # - Windows x86_64: DLSS (Streamline runtime DLLs next to the exe) and FSR 3 (Vulkan);
 # - macOS arm64: Metal (MetalFX). DLSS and FSR 3 are Windows / Linux only.
+# - deep-salvage-templates.tpz: Windows x86_64 and macOS arm64 release templates (Editor > Manage
+#   Export Templates > Install from file, or unzip into the editor's export_templates/<version>/).
+#   An exported Windows game needs the Streamline DLLs of the editor zip next to its exe.
 # The upstream Godot CI (runner.yml) only runs by hand on this fork.
 
 name: Deep Salvage engine builds
@@ -123,22 +127,130 @@ jobs:
           path: deep-salvage-engine-macos.zip
           retention-days: 30
 
+  windows-template:
+    name: Windows release template (DLSS, FSR 3)
+    runs-on: windows-latest
+    timeout-minutes: 180
+    env:
+      SCONS_CACHE_MSVC_CONFIG: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python and SCons
+        uses: ./.github/actions/godot-deps
+
+      - name: Download Direct3D 12 SDK components
+        id: d3d12
+        shell: sh
+        run: |
+          if python ./misc/scripts/install_d3d12_sdk_windows.py; then
+            echo "ENABLED=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Direct3D 12 SDK installation failed, building Vulkan only."
+            echo "ENABLED=no" >> "$GITHUB_OUTPUT"
+          fi
+        continue-on-error: true
+
+      - name: Build
+        uses: ./.github/actions/godot-build
+        with:
+          platform: windows
+          target: template_release
+          scons-flags: >-
+            use_streamline=yes
+            d3d12=${{ steps.d3d12.outputs.ENABLED || 'no' }}
+            accesskit=no
+            angle=no
+            debug_symbols=no
+
+      - name: Name it as the exporter looks for it
+        shell: bash
+        run: |
+          mkdir -p templates
+          cp bin/godot.windows.template_release.x86_64.exe templates/windows_release_x86_64.exe
+          # The console wrapper: only exported with debug builds (debug/export_console_wrapper).
+          cp bin/godot.windows.template_release.x86_64.console.exe templates/windows_release_x86_64_console.exe \
+            || echo "::warning::no console wrapper built"
+          ls -la templates
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: template-windows
+          path: templates
+          retention-days: 7
+
+  macos-template:
+    name: macOS release template (Metal)
+    runs-on: macos-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python and SCons
+        uses: ./.github/actions/godot-deps
+
+      - name: Build
+        uses: ./.github/actions/godot-build
+        with:
+          platform: macos
+          target: template_release
+          scons-flags: >-
+            arch=arm64
+            vulkan=no
+            accesskit=no
+            debug_symbols=no
+
+      - name: Package as macos.zip
+        run: |
+          # The exporter takes godot_macos_release.<binary_format/architecture> from the app.
+          mkdir -p templates
+          cp -R misc/dist/macos_template.app .
+          mkdir -p macos_template.app/Contents/MacOS
+          cp bin/godot.macos.template_release.arm64 macos_template.app/Contents/MacOS/godot_macos_release.arm64
+          chmod +x macos_template.app/Contents/MacOS/godot_macos_release.arm64
+          zip -q -9 -r templates/macos.zip macos_template.app
+          ls -la templates
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: template-macos
+          path: templates
+          retention-days: 7
+
   release:
     name: Publish the release
-    needs: [windows, macos]
+    needs: [windows, macos, windows-template, macos-template]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: version.py
+          sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: deep-salvage-engine-*
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          path: templates
+          pattern: template-*
+          merge-multiple: true
+      - name: Bundle the templates
+        run: |
+          # The folder the editor looks in: GODOT_VERSION_FULL_CONFIG ("4.8.beta").
+          version=$(python3 -c "import version as v; n = f'{v.major}.{v.minor}' + (f'.{v.patch}' if v.patch else ''); print(f'{n}.{v.status}{v.module_config}')")
+          echo "$version" > templates/version.txt
+          cat templates/version.txt
+          (zip -q -9 -r dist/deep-salvage-templates.tpz templates)
+          ls -la dist
       - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="build-$(date -u +%Y%m%d)-${GITHUB_SHA::8}"
-          gh release create "$tag" dist/*.zip --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+          gh release create "$tag" dist/*.zip dist/*.tpz --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "Deep Salvage engine $tag" \
             --notes "Godot 4.8-dev, NVIDIA fork (DLSS, Reflex, frame generation) + FSR 3.1.6. Commit ${GITHUB_SHA}."
