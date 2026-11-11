@@ -529,7 +529,7 @@ void RendererSceneRenderRD::_render_buffers_post_process_and_tonemap(const Rende
 				float z_far = p_render_data->scene_data->view_projection[i].get_z_far();
 
 				RID lowres_depth = rb->get_depth_texture(i);
-				RID upscaled_color = use_upscaled_texture ? rb->get_upscaled_texture(i) : rb->get_internal_texture(i);
+				RID upscaled_color = use_upscaled_texture ? rb->get_upscaled_layer(i) : rb->get_internal_texture(i);
 				RID velocity = rb->get_velocity_buffer(false, i);
 				RID dest_depth = rb->get_texture_slice(RB_SCOPE_BUFFERS, RB_TEX_RECONSTRUCTED_DEPTH, i, 0);
 
@@ -564,7 +564,7 @@ void RendererSceneRenderRD::_render_buffers_post_process_and_tonemap(const Rende
 
 		if (can_use_storage) {
 			for (uint32_t i = 0; i < rb->get_view_count(); i++) {
-				buffers.base_texture = use_upscaled_texture ? rb->get_upscaled_texture(i) : rb->get_internal_texture(i);
+				buffers.base_texture = use_upscaled_texture ? rb->get_upscaled_layer(i) : rb->get_internal_texture(i);
 #ifdef WINDOWS_ENABLED
 				bool force_lowres_depth = (GetAsyncKeyState(VK_BACK) & 0x8000) != 0;
 #else
@@ -659,7 +659,7 @@ void RendererSceneRenderRD::_render_buffers_post_process_and_tonemap(const Rende
 			}
 			for (uint32_t l = 0; l < rb->get_view_count(); l++) {
 				Size2i vp_size = rb->get_texture_slice_size(RB_SCOPE_BUFFERS, RB_TEX_BLUR_1, 0);
-				RID source = use_upscaled_texture ? rb->get_upscaled_texture(l) : rb->get_internal_texture(l);
+				RID source = use_upscaled_texture ? rb->get_upscaled_layer(l) : rb->get_internal_texture(l);
 				RID dest = rb->get_texture_slice(RB_SCOPE_BUFFERS, RB_TEX_BLUR_1, l, 0);
 				copy_effects->gaussian_glow(source, dest, vp_size, environment_get_glow_strength(p_render_data->environment), true, environment_get_glow_hdr_luminance_cap(p_render_data->environment), environment_get_exposure(p_render_data->environment), environment_get_glow_bloom(p_render_data->environment), environment_get_glow_hdr_bleed_threshold(p_render_data->environment), environment_get_glow_hdr_bleed_scale(p_render_data->environment), luminance_texture, auto_exposure_scale);
 

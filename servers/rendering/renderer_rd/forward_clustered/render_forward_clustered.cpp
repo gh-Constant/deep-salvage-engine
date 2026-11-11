@@ -1960,7 +1960,7 @@ void RenderForwardClustered::_render_3d_upscaling(const RenderDataRD *p_render_d
 			params.velocity = rb->get_velocity_buffer(false, v);
 			params.reactive = rb->get_internal_texture_reactive(v);
 			params.exposure = exposure;
-			params.output = rb->get_upscaled_texture(v);
+			params.output = rb->get_upscaled_layer(v);
 			params.z_near = p_render_data->scene_data->z_near;
 			params.z_far = p_render_data->scene_data->z_far;
 			params.fovy = fovy;
@@ -2005,7 +2005,7 @@ void RenderForwardClustered::_render_3d_upscaling(const RenderDataRD *p_render_d
 			params.velocity = rb->get_velocity_buffer(false, v);
 			params.reactive = rb->get_internal_texture_reactive(v);
 			params.exposure = exposure;
-			params.output = rb->get_upscaled_texture(v);
+			params.output = rb->get_upscaled_layer(v);
 			params.dlss_g = rb->get_frame_generation();
 			params.preset = '?'; // FIXME: Unique preset per viewport? Does anyone need this?
 			params.z_near = p_render_data->scene_data->z_near;
@@ -2059,7 +2059,7 @@ void RenderForwardClustered::_render_3d_upscaling(const RenderDataRD *p_render_d
 			params.depth = rb->get_depth_texture(v);
 			params.motion = rb->get_velocity_buffer(false, v);
 			params.exposure = exposure;
-			params.dst = rb->get_upscaled_texture(v);
+			params.dst = rb->get_upscaled_layer(v);
 			params.jitter_offset = jitter;
 			params.reset = reset;
 
