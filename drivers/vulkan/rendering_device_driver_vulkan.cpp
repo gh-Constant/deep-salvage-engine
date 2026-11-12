@@ -35,6 +35,7 @@
 #include "core/error/error_backtrace.h"
 #include "core/os/os.h"
 #include "core/templates/fixed_vector.h"
+#include "drivers/anr_fg/anr_frame_generation.h"
 #include "drivers/vulkan/vulkan_hooks.h"
 
 #include <thirdparty/misc/smolv.h>
@@ -3486,6 +3487,46 @@ Error RenderingDeviceDriverVulkan::command_queue_execute_and_present(CommandQueu
 	}
 
 	if (p_swap_chains.size() > 0) {
+		// Frame generation: a generated frame goes on screen before the real one it leads up to.
+		bool generated_presented = false;
+		SwapChain *paced_swap_chain = nullptr;
+		for (uint32_t i = 0; i < p_swap_chains.size(); i++) {
+			SwapChain *swap_chain = (SwapChain *)(p_swap_chains[i].id);
+			if (swap_chain->generated_frame.image == VK_NULL_HANDLE) {
+				continue;
+			}
+			if (p_cmd_buffers.size() > 0 && _swap_chain_present_generated_frame(swap_chain, command_queue, device_queue)) {
+				generated_presented = true;
+				paced_swap_chain = swap_chain;
+			}
+			swap_chain->generated_frame = SwapChain::GeneratedFrame();
+		}
+
+		if (generated_presented) {
+			// Without V-Sync both images would reach the screen together: hold the real one back by
+			// half of a frame's own work so the generated one is seen for a while. The wait itself
+			// is left out of the measure (else it feeds back and halves the frame rate). FIFO paces
+			// by itself. GODOT_ANR_FG_PACING=0: no wait.
+			static const bool pacing = OS::get_singleton()->get_environment("GODOT_ANR_FG_PACING") != "0";
+			const uint64_t now = OS::get_singleton()->get_ticks_usec();
+			if (paced_swap_chain->generated_last_present_usec != 0) {
+				const double work = double(now - paced_swap_chain->generated_last_present_usec) - double(paced_swap_chain->generated_last_wait_usec);
+				if (work > 0.0 && work < 200000.0) {
+					paced_swap_chain->generated_real_interval_usec = paced_swap_chain->generated_real_interval_usec <= 0.0 ? work : paced_swap_chain->generated_real_interval_usec * 0.9 + work * 0.1;
+				}
+			}
+			paced_swap_chain->generated_last_present_usec = now;
+			paced_swap_chain->generated_last_wait_usec = 0;
+			const bool fifo = paced_swap_chain->present_mode == VK_PRESENT_MODE_FIFO_KHR || paced_swap_chain->present_mode == VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+			if (pacing && !fifo && paced_swap_chain->generated_real_interval_usec > 0.0) {
+				const uint64_t wait = (uint64_t)MIN(paced_swap_chain->generated_real_interval_usec * 0.5, 33000.0);
+				if (wait > 200) {
+					OS::get_singleton()->delay_usec(wait);
+					paced_swap_chain->generated_last_wait_usec = OS::get_singleton()->get_ticks_usec() - now;
+				}
+			}
+		}
+
 		thread_local LocalVector<VkSwapchainKHR> swapchains;
 		thread_local LocalVector<uint32_t> image_indices;
 		thread_local LocalVector<VkResult> results;
@@ -3821,7 +3862,236 @@ bool RenderingDeviceDriverVulkan::_determine_swap_chain_format(RenderingContextD
 	return found;
 }
 
+void RenderingDeviceDriverVulkan::swap_chain_set_generated_frame(SwapChainID p_swap_chain, uint64_t p_native_image, uint32_t p_native_format, Size2i p_size, Rect2i p_dst_rect) {
+	DEV_ASSERT(p_swap_chain.id != 0);
+
+	SwapChain *swap_chain = (SwapChain *)(p_swap_chain.id);
+	swap_chain->generated_frame.image = (VkImage)p_native_image;
+	swap_chain->generated_frame.format = (VkFormat)p_native_format;
+	swap_chain->generated_frame.size = p_size;
+	swap_chain->generated_frame.dst_rect = p_dst_rect;
+}
+
+void RenderingDeviceDriverVulkan::_swap_chain_release_generated_frame_objects(SwapChain *p_swap_chain) {
+	p_swap_chain->generated_frame = SwapChain::GeneratedFrame();
+	for (const SwapChain::GeneratedSlot &slot : p_swap_chain->generated_slots) {
+		if (slot.fence != VK_NULL_HANDLE) {
+			vkWaitForFences(vk_device, 1, &slot.fence, VK_TRUE, UINT64_MAX);
+			vkDestroyFence(vk_device, slot.fence, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_FENCE));
+		}
+		if (slot.acquire_semaphore != VK_NULL_HANDLE) {
+			vkDestroySemaphore(vk_device, slot.acquire_semaphore, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_SEMAPHORE));
+		}
+	}
+	p_swap_chain->generated_slots.clear();
+	p_swap_chain->generated_slot_index = 0;
+	if (p_swap_chain->generated_command_pool != VK_NULL_HANDLE) {
+		vkDestroyCommandPool(vk_device, p_swap_chain->generated_command_pool, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_COMMAND_POOL));
+		p_swap_chain->generated_command_pool = VK_NULL_HANDLE;
+	}
+	p_swap_chain->generated_queue_family = UINT32_MAX;
+	for (VkSemaphore semaphore : p_swap_chain->generated_present_semaphores) {
+		vkDestroySemaphore(vk_device, semaphore, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_SEMAPHORE));
+	}
+	p_swap_chain->generated_present_semaphores.clear();
+	p_swap_chain->generated_last_present_usec = 0;
+	p_swap_chain->generated_last_wait_usec = 0;
+	p_swap_chain->generated_real_interval_usec = 0.0;
+}
+
+bool RenderingDeviceDriverVulkan::_swap_chain_present_generated_frame(SwapChain *p_swap_chain, CommandQueue *p_command_queue, Queue &p_device_queue) {
+	const SwapChain::GeneratedFrame frame = p_swap_chain->generated_frame;
+	if (frame.image == VK_NULL_HANDLE || p_swap_chain->vk_swapchain == VK_NULL_HANDLE || p_swap_chain->image_index >= p_swap_chain->images.size()) {
+		return false;
+	}
+	// The real image is still acquired: a second one can only be waited for when the swap chain has
+	// more images than the presentation engine keeps.
+	if (!p_swap_chain->supports_transfer_dst || p_swap_chain->images.size() <= p_swap_chain->min_image_count) {
+		if (!p_swap_chain->generated_warned) {
+			p_swap_chain->generated_warned = true;
+			WARN_PRINT(vformat("ANR FG: cannot present generated frames on this swap chain (%d images, %d kept by the presentation engine, transfer %s).",
+					(int64_t)p_swap_chain->images.size(), (int64_t)p_swap_chain->min_image_count, p_swap_chain->supports_transfer_dst ? "yes" : "no"));
+		}
+		return false;
+	}
+
+	VkResult err;
+	const uint32_t queue_family = p_command_queue->queue_family;
+	if (p_swap_chain->generated_command_pool == VK_NULL_HANDLE || p_swap_chain->generated_queue_family != queue_family) {
+		_swap_chain_release_generated_frame_objects(p_swap_chain);
+
+		VkCommandPoolCreateInfo pool_info = {};
+		pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+		pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+		pool_info.queueFamilyIndex = queue_family;
+		err = vkCreateCommandPool(vk_device, &pool_info, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_COMMAND_POOL), &p_swap_chain->generated_command_pool);
+		ERR_FAIL_COND_V_MSG(err != VK_SUCCESS, false, "ANR FG: couldn't create the generated frame command pool.");
+		p_swap_chain->generated_queue_family = queue_family;
+
+		const uint32_t slot_count = 4;
+		p_swap_chain->generated_slots.resize(slot_count);
+		for (SwapChain::GeneratedSlot &slot : p_swap_chain->generated_slots) {
+			VkCommandBufferAllocateInfo allocate_info = {};
+			allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+			allocate_info.commandPool = p_swap_chain->generated_command_pool;
+			allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+			allocate_info.commandBufferCount = 1;
+			err = vkAllocateCommandBuffers(vk_device, &allocate_info, &slot.command_buffer);
+			ERR_FAIL_COND_V(err != VK_SUCCESS, false);
+
+			VkFenceCreateInfo fence_info = {};
+			fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+			fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+			err = vkCreateFence(vk_device, &fence_info, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_FENCE), &slot.fence);
+			ERR_FAIL_COND_V(err != VK_SUCCESS, false);
+
+			VkSemaphoreCreateInfo semaphore_info = {};
+			semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+			err = vkCreateSemaphore(vk_device, &semaphore_info, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_SEMAPHORE), &slot.acquire_semaphore);
+			ERR_FAIL_COND_V(err != VK_SUCCESS, false);
+		}
+	}
+	if (p_swap_chain->generated_present_semaphores.size() != p_swap_chain->images.size()) {
+		// One per image, like the real presents: an image is only acquired again once its last
+		// present has consumed the semaphore.
+		for (VkSemaphore semaphore : p_swap_chain->generated_present_semaphores) {
+			vkDestroySemaphore(vk_device, semaphore, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_SEMAPHORE));
+		}
+		p_swap_chain->generated_present_semaphores.resize(p_swap_chain->images.size());
+		for (VkSemaphore &semaphore : p_swap_chain->generated_present_semaphores) {
+			VkSemaphoreCreateInfo semaphore_info = {};
+			semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+			err = vkCreateSemaphore(vk_device, &semaphore_info, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_SEMAPHORE), &semaphore);
+			ERR_FAIL_COND_V(err != VK_SUCCESS, false);
+		}
+	}
+
+	SwapChain::GeneratedSlot &slot = p_swap_chain->generated_slots[p_swap_chain->generated_slot_index];
+	p_swap_chain->generated_slot_index = (p_swap_chain->generated_slot_index + 1) % p_swap_chain->generated_slots.size();
+	vkWaitForFences(vk_device, 1, &slot.fence, VK_TRUE, UINT64_MAX);
+
+	uint32_t image_index = UINT32_MAX;
+	err = device_functions.AcquireNextImageKHR(vk_device, p_swap_chain->vk_swapchain, UINT64_MAX, slot.acquire_semaphore, VK_NULL_HANDLE, &image_index);
+	if ((err != VK_SUCCESS && err != VK_SUBOPTIMAL_KHR) || image_index >= p_swap_chain->images.size()) {
+		if (err == VK_ERROR_OUT_OF_DATE_KHR) {
+			context_driver->surface_set_needs_resize(p_swap_chain->surface, true);
+		}
+		return false; // The semaphore was not signaled and the fence is still signaled: the slot stays usable.
+	}
+	vkResetFences(vk_device, 1, &slot.fence);
+
+	VkImage dst_image = p_swap_chain->images[image_index];
+	vkResetCommandBuffer(slot.command_buffer, 0);
+	VkCommandBufferBeginInfo begin_info = {};
+	begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	vkBeginCommandBuffer(slot.command_buffer, &begin_info);
+
+	VkImageMemoryBarrier barriers[2] = {};
+	for (VkImageMemoryBarrier &barrier : barriers) {
+		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		barrier.subresourceRange.levelCount = 1;
+		barrier.subresourceRange.layerCount = 1;
+	}
+	// The generated frame was written by this frame's earlier submission (same queue): its writes
+	// are made visible by the source scope covering every earlier command.
+	barriers[0].srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+	barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+	barriers[0].oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+	barriers[0].newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	barriers[0].image = frame.image;
+	barriers[1].srcAccessMask = 0;
+	barriers[1].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	barriers[1].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	barriers[1].newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	barriers[1].image = dst_image;
+	vkCmdPipelineBarrier(slot.command_buffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 2, barriers);
+
+	Rect2i dst_rect = frame.dst_rect;
+	const Rect2i full_rect(0, 0, (int)context_driver->surface_get_width(p_swap_chain->surface), (int)context_driver->surface_get_height(p_swap_chain->surface));
+	if (dst_rect.size.x <= 0 || dst_rect.size.y <= 0) {
+		dst_rect = full_rect;
+	}
+	dst_rect = dst_rect.intersection(full_rect);
+	if (dst_rect != full_rect) {
+		VkClearColorValue black = {};
+		VkImageSubresourceRange range = barriers[1].subresourceRange;
+		vkCmdClearColorImage(slot.command_buffer, dst_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black, 1, &range);
+	}
+
+	VkImageBlit region = {};
+	region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	region.srcSubresource.layerCount = 1;
+	region.srcOffsets[1] = { frame.size.x, frame.size.y, 1 };
+	region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	region.dstSubresource.layerCount = 1;
+	region.dstOffsets[0] = { dst_rect.position.x, dst_rect.position.y, 0 };
+	region.dstOffsets[1] = { dst_rect.position.x + dst_rect.size.x, dst_rect.position.y + dst_rect.size.y, 1 };
+	const bool same_size = frame.size == dst_rect.size;
+	vkCmdBlitImage(slot.command_buffer, frame.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, same_size ? VK_FILTER_NEAREST : VK_FILTER_LINEAR);
+
+	// Back to the layout the render graph left the generated frame in, and the swap image to present.
+	barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+	barriers[0].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+	barriers[0].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	barriers[0].newLayout = VK_IMAGE_LAYOUT_GENERAL;
+	barriers[1].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	barriers[1].dstAccessMask = 0;
+	barriers[1].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	barriers[1].newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+	vkCmdPipelineBarrier(slot.command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, 2, barriers);
+	vkEndCommandBuffer(slot.command_buffer);
+
+	VkSemaphore present_semaphore = p_swap_chain->generated_present_semaphores[image_index];
+	const VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+	VkSubmitInfo submit_info = {};
+	submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submit_info.waitSemaphoreCount = 1;
+	submit_info.pWaitSemaphores = &slot.acquire_semaphore;
+	submit_info.pWaitDstStageMask = &wait_stage;
+	submit_info.commandBufferCount = 1;
+	submit_info.pCommandBuffers = &slot.command_buffer;
+	submit_info.signalSemaphoreCount = 1;
+	submit_info.pSignalSemaphores = &present_semaphore;
+
+	VkPresentInfoKHR present_info = {};
+	present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	present_info.waitSemaphoreCount = 1;
+	present_info.pWaitSemaphores = &present_semaphore;
+	present_info.swapchainCount = 1;
+	present_info.pSwapchains = &p_swap_chain->vk_swapchain;
+	present_info.pImageIndices = &image_index;
+
+	p_device_queue.submit_mutex.lock();
+	err = vkQueueSubmit(p_device_queue.queue, 1, &submit_info, slot.fence);
+	VkResult present_err = VK_SUCCESS;
+	if (err == VK_SUCCESS) {
+		present_err = device_functions.QueuePresentKHR(p_device_queue.queue, &present_info);
+	}
+	p_device_queue.submit_mutex.unlock();
+
+	if (err != VK_SUCCESS) {
+		ERR_PRINT(vformat("ANR FG: couldn't submit the generated frame copy (VkResult error %d).", err));
+		return false;
+	}
+	if (present_err == VK_ERROR_OUT_OF_DATE_KHR) {
+		context_driver->surface_set_needs_resize(p_swap_chain->surface, true);
+	}
+	if (present_err != VK_SUCCESS && present_err != VK_SUBOPTIMAL_KHR) {
+		return false;
+	}
+	if (AnrFrameGeneration::get_singleton()) {
+		AnrFrameGeneration::get_singleton()->note_generated_frame_presented();
+	}
+	return true;
+}
+
 void RenderingDeviceDriverVulkan::_swap_chain_release(SwapChain *swap_chain) {
+	_swap_chain_release_generated_frame_objects(swap_chain);
+
 	// Destroy views and framebuffers associated to the swapchain's images.
 	for (FramebufferID framebuffer : swap_chain->framebuffers) {
 		framebuffer_free(framebuffer);
@@ -4033,6 +4303,14 @@ Error RenderingDeviceDriverVulkan::swap_chain_resize(CommandQueueID p_cmd_queue,
 	swap_create_info.imageExtent = extent;
 	swap_create_info.imageArrayLayers = 1;
 	swap_create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	// Frame generation copies generated frames into swap chain images.
+	swap_chain->supports_transfer_dst = (surface_capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT) != 0;
+	if (swap_chain->supports_transfer_dst) {
+		swap_create_info.imageUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	}
+	swap_chain->present_mode = present_mode;
+	swap_chain->min_image_count = surface_capabilities.minImageCount;
+	swap_chain->generated_warned = false;
 	swap_create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	swap_create_info.preTransform = surface_transform_bits;
 	switch (swap_create_info.preTransform) {

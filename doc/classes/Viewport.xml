@@ -350,6 +350,9 @@
 		<member name="disable_3d" type="bool" setter="set_disable_3d" getter="is_3d_disabled" default="false">
 			Disable 3D rendering (but keep 2D rendering).
 		</member>
+		<member name="frame_generation_provider" type="int" setter="set_frame_generation_provider" getter="get_frame_generation_provider" enum="Viewport.FrameGenerationProvider" default="0">
+			Who generates frames when [member frame_generation] is on. [constant FRAME_GENERATION_PROVIDER_ANR] (ANR FG) works with any temporal upscaler, TAA or none, on the Vulkan driver; check [method AnrFrameGeneration.is_available] or [constant RenderingDevice.SUPPORTS_ANR_FRAME_GENERATION] first.
+		</member>
 		<member name="frame_generation" type="bool" setter="set_frame_generation" getter="get_frame_generation" default="false">
 			Enables Frame Generation technology on this viewport, if available. (currently DLSS 3.0 is supported - NVIDIA only)
 			[b]Note:[/b] DLSS Frame Generation requires NVIDIA Reflex to be running. If [member ProjectSettings.rendering/streamline/reflex_mode] is [code]0[/code], Reflex is automatically enabled in low latency mode for as long as frame generation is active. Frame generation is not enabled at all if Reflex is unavailable.
@@ -616,6 +619,15 @@
 		</constant>
 		<constant name="SCALING_3D_MODE_MAX" value="9" enum="Scaling3DMode">
 			Represents the size of the [enum Scaling3DMode] enum.
+		</constant>
+		<constant name="FRAME_GENERATION_PROVIDER_DLSS" value="0" enum="FrameGenerationProvider">
+			NVIDIA DLSS Frame Generation through Streamline (NVIDIA RTX 40 and later, with the DLSS upscaler).
+		</constant>
+		<constant name="FRAME_GENERATION_PROVIDER_ANR" value="1" enum="FrameGenerationProvider">
+			ANR FG (Apex Neural Rendering frame generation): the engine loads the provider's [code]nvngx_dlssg.dll[/code] (from [code]GODOT_ANR_FG_PATH[/code], [member ProjectSettings.rendering/anr_frame_generation/provider_path] or the [code]anr_fg[/code] folder next to the executable) and presents one generated frame before each drawn frame. Vulkan only; runs on AMD, Intel and NVIDIA GPUs.
+		</constant>
+		<constant name="FRAME_GENERATION_PROVIDER_MAX" value="2" enum="FrameGenerationProvider">
+			Represents the size of the [enum FrameGenerationProvider] enum.
 		</constant>
 		<constant name="MSAA_DISABLED" value="0" enum="MSAA">
 			Multisample antialiasing mode disabled. This is the default value, and is also the fastest setting.

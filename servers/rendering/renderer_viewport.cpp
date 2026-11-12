@@ -333,7 +333,13 @@ void RendererViewport::_configure_3d_render_buffers(Viewport *p_viewport) {
 			rb_config.set_texture_mipmap_bias(texture_mipmap_bias);
 			rb_config.set_anisotropic_filtering_level(p_viewport->anisotropic_filtering_level);
 			rb_config.set_use_taa(use_taa);
-			rb_config.set_use_frame_generation(p_viewport->frame_generation);
+			{
+				// GODOT_ANR_FG_FORCE=1 turns ANR FG on for the viewports drawn to a window (tests).
+				static const bool anr_fg_forced = OS::get_singleton()->get_environment("GODOT_ANR_FG_FORCE") == "1";
+				const bool forced = anr_fg_forced && p_viewport->viewport_to_screen != DisplayServerEnums::INVALID_WINDOW_ID;
+				rb_config.set_use_frame_generation(p_viewport->frame_generation || forced);
+				rb_config.set_frame_generation_provider(forced ? 1 : p_viewport->frame_generation_provider);
+			}
 			rb_config.set_use_debanding(p_viewport->use_debanding);
 
 			p_viewport->render_buffers->configure(&rb_config);
@@ -1240,6 +1246,14 @@ void RendererViewport::viewport_set_frame_generation(RID p_viewport, bool p_fram
 	ERR_FAIL_NULL(viewport);
 
 	viewport->frame_generation = p_frame_generation;
+	_configure_3d_render_buffers(viewport);
+}
+
+void RendererViewport::viewport_set_frame_generation_provider(RID p_viewport, int p_provider) {
+	Viewport *viewport = viewport_owner.get_or_null(p_viewport);
+	ERR_FAIL_NULL(viewport);
+
+	viewport->frame_generation_provider = p_provider;
 	_configure_3d_render_buffers(viewport);
 }
 

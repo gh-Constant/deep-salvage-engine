@@ -773,6 +773,7 @@ public:
 	FUNC2(viewport_set_scaling_3d_mode, RID, RSE::ViewportScaling3DMode)
 	FUNC2(viewport_set_scaling_3d_scale, RID, float)
 	FUNC2(viewport_set_frame_generation, RID, bool)
+	FUNC2(viewport_set_frame_generation_provider, RID, int)
 	FUNC2(viewport_set_scaling_3d_custom_upscaler, RID, RID)
 	FUNC2(viewport_set_fsr_sharpness, RID, float)
 	FUNC2(viewport_set_texture_mipmap_bias, RID, float)

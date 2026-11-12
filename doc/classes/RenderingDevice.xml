@@ -2884,6 +2884,9 @@
 		<constant name="SUPPORTS_RAYTRACING_POSITION_FETCH" value="18" enum="Features">
 			Support for reading hit triangle vertex positions from acceleration structures built with [constant ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_BIT]. On Vulkan, requires the [code]VK_KHR_ray_tracing_position_fetch[/code] extension.
 		</constant>
+		<constant name="SUPPORTS_ANR_FRAME_GENERATION" value="19" enum="Features">
+			ANR FG frame generation is available: its provider was found and initialized on this device (see [AnrFrameGeneration] and [constant Viewport.FRAME_GENERATION_PROVIDER_ANR]).
+		</constant>
 		<constant name="LIMIT_MAX_BOUND_UNIFORM_SETS" value="0" enum="Limit">
 			Maximum number of uniform sets that can be bound at a given time.
 		</constant>

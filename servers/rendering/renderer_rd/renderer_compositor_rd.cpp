@@ -35,6 +35,7 @@
 #include "core/io/dir_access.h"
 #include "core/os/os.h"
 #include "drivers/streamline/streamline.h"
+#include "servers/rendering/renderer_rd/effects/anr_fg_effect.h"
 #include "servers/display/display_server.h"
 #include "servers/rendering/renderer_rd/forward_clustered/render_forward_clustered_pt.h"
 #include "servers/rendering/renderer_rd/forward_mobile/render_forward_mobile.h"
@@ -48,6 +49,15 @@ void RendererCompositorRD::blit_render_targets_to_screen(DisplayServerEnums::Win
 	}
 
 	BlitPipelines blit_pipelines = _get_blit_pipelines_for_format(RD::get_singleton()->screen_get_framebuffer_format(p_screen));
+
+	// ANR FG: generate the frame shown before this one, from the render target the window shows.
+	if (RendererRD::AnrFgEffect::get_singleton() != nullptr) {
+		for (int i = 0; i < p_amount; i++) {
+			if (!p_render_targets[i].multi_view.use_layer && !p_render_targets[i].lens_distortion.apply) {
+				RendererRD::AnrFgEffect::get_singleton()->process_screen_blit(p_screen, p_render_targets[i].render_target, p_render_targets[i].dst_rect);
+			}
+		}
+	}
 
 	RD::DrawListID draw_list = RD::get_singleton()->draw_list_begin_for_screen(p_screen);
 	ERR_FAIL_COND(draw_list == RD::INVALID_ID);
@@ -176,6 +186,7 @@ void RendererCompositorRD::initialize() {
 uint64_t RendererCompositorRD::frame = 1;
 
 void RendererCompositorRD::finalize() {
+	RendererRD::AnrFgEffect::free_singleton();
 	texture_storage->_tex_blit_shader_free();
 	memdelete(scene);
 	memdelete(canvas);

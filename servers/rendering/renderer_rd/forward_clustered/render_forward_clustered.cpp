@@ -31,6 +31,7 @@
 #include "render_forward_clustered.h"
 
 #include "core/config/project_settings.h"
+#include "servers/rendering/renderer_rd/effects/anr_fg_effect.h"
 #include "servers/rendering/renderer_rd/environment/fog.h"
 #include "servers/rendering/renderer_rd/framebuffer_cache_rd.h"
 #include "servers/rendering/renderer_rd/storage_rd/light_storage.h"
@@ -2006,7 +2007,7 @@ void RenderForwardClustered::_render_3d_upscaling(const RenderDataRD *p_render_d
 			params.reactive = rb->get_internal_texture_reactive(v);
 			params.exposure = exposure;
 			params.output = rb->get_upscaled_layer(v);
-			params.dlss_g = rb->get_frame_generation();
+			params.dlss_g = rb->get_frame_generation() && rb->get_frame_generation_provider() == 0;
 			params.preset = '?'; // FIXME: Unique preset per viewport? Does anyone need this?
 			params.z_near = p_render_data->scene_data->z_near;
 			params.z_far = p_render_data->scene_data->z_far;
@@ -2156,6 +2157,8 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 
 	bool using_debug_mvs = get_debug_draw_mode() == RSE::VIEWPORT_DEBUG_DRAW_MOTION_VECTORS;
 	bool using_taa = rb->get_use_taa();
+	// ANR FG needs depth and motion vectors of every frame, with or without a temporal upscaler.
+	const bool using_anr_fg = !is_reflection_probe && rb_data.is_valid() && rb->get_anr_frame_generation() && rb->get_view_count() == 1;
 
 	Scale3DMode scale_type = _resolve_scale_3d_mode(rb);
 
@@ -2166,6 +2169,8 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 	if (using_debug_mvs) {
 		motion_vectors_required = true;
 	} else if (ce_needs_motion_vectors) {
+		motion_vectors_required = true;
+	} else if (using_anr_fg) {
 		motion_vectors_required = true;
 	} else if (!is_reflection_probe && using_taa) {
 		motion_vectors_required = true;
@@ -2838,8 +2843,8 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 
 		bool compositor_needs_resolved_depth = _compositor_effects_has_flag(p_render_data, RSE::COMPOSITOR_EFFECT_FLAG_ACCESS_RESOLVED_DEPTH, RSE::CompositorEffectCallbackType::COMPOSITOR_EFFECT_CALLBACK_TYPE_POST_TRANSPARENT);
 		bool using_dof = RSG::camera_attributes->camera_attributes_uses_dof(p_render_data->camera_attributes);
-		bool resolve_transparent_depth = (using_taa || using_upscaling || using_dof || compositor_needs_resolved_depth);
-		bool resolve_velocity_buffer = (using_taa || using_upscaling || ce_needs_motion_vectors) && rb->has_velocity_buffer(true);
+		bool resolve_transparent_depth = (using_taa || using_upscaling || using_dof || compositor_needs_resolved_depth || using_anr_fg);
+		bool resolve_velocity_buffer = (using_taa || using_upscaling || ce_needs_motion_vectors || using_anr_fg) && rb->has_velocity_buffer(true);
 
 		RENDER_TIMESTAMP("Resolve Color");
 		for (uint32_t v = 0; v < rb->get_view_count(); v++) {
@@ -2876,6 +2881,13 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 
 	if (rb_data.is_valid() && (using_upscaling || using_taa)) {
 		_render_3d_upscaling(p_render_data, scale_type, using_taa, time_step, DLSSRRGuideBuffers());
+	}
+
+	if (using_anr_fg) {
+		// After the upscaler, which is done with the motion vectors: ANR FG takes this frame's
+		// depth, motion vectors and camera, and generates when the window is blitted.
+		RENDER_TIMESTAMP("ANR FG inputs");
+		RendererRD::AnrFgEffect::get_or_create()->capture_scene(p_render_data);
 	}
 
 	if (rb_data.is_valid()) {

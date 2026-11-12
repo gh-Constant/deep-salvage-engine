@@ -31,6 +31,7 @@
 #include "os_windows.h"
 
 #include "core/profiling/profiling.h"
+#include "drivers/anr_fg/anr_frame_generation.h"
 #include "main/main.h"
 
 #include <clocale>
@@ -114,6 +115,16 @@ int widechar_main(int argc, wchar_t **argv) {
 	delete[] argv_utf8;
 
 	godot_cleanup_profiler();
+
+	if (AnrFrameGeneration::provider_was_used()) {
+		// ANR FG's provider tears its Vulkan objects down when its DLL is detached, after the
+		// engine destroyed the device and the loader unloaded the driver, which crashes. Everything
+		// of the engine is cleaned up by now: end without detaching DLLs.
+		const int exit_code = os.get_exit_code();
+		fflush(stdout);
+		fflush(stderr);
+		TerminateProcess(GetCurrentProcess(), (UINT)exit_code);
+	}
 	return os.get_exit_code();
 }
 
