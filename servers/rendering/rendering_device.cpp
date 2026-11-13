@@ -6053,6 +6053,20 @@ RDD::SwapChainID RenderingDevice::screen_get_swap_chain(DisplayServerEnums::Wind
 	return it == screen_swap_chains.end() ? RDD::SwapChainID() : it->value;
 }
 
+RenderingDevice::DataFormat RenderingDevice::screen_get_data_format(DisplayServerEnums::WindowID p_screen) const {
+	_THREAD_SAFE_METHOD_
+
+	HashMap<DisplayServerEnums::WindowID, RDD::SwapChainID>::ConstIterator it = screen_swap_chains.find(p_screen);
+	return it == screen_swap_chains.end() ? DATA_FORMAT_MAX : driver->swap_chain_get_format(it->value);
+}
+
+String RenderingDevice::screen_get_frame_generation_blocker(DisplayServerEnums::WindowID p_screen) const {
+	_THREAD_SAFE_METHOD_
+
+	HashMap<DisplayServerEnums::WindowID, RDD::SwapChainID>::ConstIterator it = screen_swap_chains.find(p_screen);
+	return it == screen_swap_chains.end() ? String("the window has no swap chain") : driver->swap_chain_get_frame_generation_blocker(it->value);
+}
+
 RenderingDevice::ColorSpace RenderingDevice::screen_get_color_space(DisplayServerEnums::WindowID p_screen) const {
 	_THREAD_SAFE_METHOD_
 
@@ -9643,6 +9657,12 @@ void RenderingDevice::finalize() {
 	// Wait for transfer workers to finish.
 	_submit_transfer_workers();
 	_wait_for_transfer_workers();
+
+	// ANR FG's provider releases its features and shuts NGX down on this device now that the GPU is
+	// idle and no queue is submitting (no device-wide wait of its own, which would race them).
+	if (is_main_instance && AnrFrameGeneration::get_singleton() != nullptr) {
+		AnrFrameGeneration::get_singleton()->finish();
+	}
 
 	// Delete everything the graph has created.
 	draw_graph.finalize();

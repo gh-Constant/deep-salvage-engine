@@ -41,9 +41,79 @@
 #include "servers/rendering/renderer_rd/forward_mobile/render_forward_mobile.h"
 #include "servers/rendering/rendering_server_types.h"
 
+void RendererCompositorRD::_blit_render_target(RD::DrawListID p_draw_list, const BlitPipelines &p_pipelines, const BlitTargetState &p_state, const RenderingServerTypes::BlitToScreen &p_target, RID p_texture) {
+	BlitMode mode = p_target.lens_distortion.apply ? BLIT_MODE_LENS : (p_target.multi_view.use_layer ? BLIT_MODE_USE_LAYER : BLIT_MODE_NORMAL);
+
+	HashMap<RID, RID>::Iterator it = render_target_descriptors.find(p_texture);
+	if (it == render_target_descriptors.end() || !RD::get_singleton()->uniform_set_is_valid(it->value)) {
+		Vector<RD::Uniform> uniforms;
+		RD::Uniform u;
+		u.uniform_type = RD::UNIFORM_TYPE_SAMPLER_WITH_TEXTURE;
+		u.binding = 0;
+		u.append_id(blit.sampler);
+		u.append_id(p_texture);
+		uniforms.push_back(u);
+		RID uniform_set = RD::get_singleton()->uniform_set_create(uniforms, blit.shader.version_get_shader(blit.shader_version, mode), 0);
+
+		it = render_target_descriptors.insert(p_texture, uniform_set);
+	}
+
+	Size2 screen_size(RD::get_singleton()->screen_get_width(p_state.screen), RD::get_singleton()->screen_get_height(p_state.screen));
+
+	RD::get_singleton()->draw_list_bind_render_pipeline(p_draw_list, p_pipelines.pipelines[mode]);
+	RD::get_singleton()->draw_list_bind_index_array(p_draw_list, blit.array);
+	RD::get_singleton()->draw_list_bind_uniform_set(p_draw_list, it->value, 0);
+
+	// We need to invert the phone rotation.
+	const int screen_rotation_degrees = -RD::get_singleton()->screen_get_pre_rotation_degrees(p_state.screen);
+	float screen_rotation = Math::deg_to_rad((float)screen_rotation_degrees);
+
+	blit.push_constant.rotation_cos = Math::cos(screen_rotation);
+	blit.push_constant.rotation_sin = Math::sin(screen_rotation);
+	// Swap width and height when the orientation is not the native one.
+	if (screen_rotation_degrees % 180 != 0) {
+		SWAP(screen_size.width, screen_size.height);
+	}
+	blit.push_constant.src_rect[0] = p_target.src_rect.position.x;
+	blit.push_constant.src_rect[1] = p_target.src_rect.position.y;
+	blit.push_constant.src_rect[2] = p_target.src_rect.size.width;
+	blit.push_constant.src_rect[3] = p_target.src_rect.size.height;
+	blit.push_constant.dst_rect[0] = p_target.dst_rect.position.x / screen_size.width;
+	blit.push_constant.dst_rect[1] = p_target.dst_rect.position.y / screen_size.height;
+	blit.push_constant.dst_rect[2] = p_target.dst_rect.size.width / screen_size.width;
+	blit.push_constant.dst_rect[3] = p_target.dst_rect.size.height / screen_size.height;
+	blit.push_constant.layer = p_target.multi_view.layer;
+	blit.push_constant.eye_center[0] = p_target.lens_distortion.eye_center.x;
+	blit.push_constant.eye_center[1] = p_target.lens_distortion.eye_center.y;
+	blit.push_constant.k1 = p_target.lens_distortion.k1;
+	blit.push_constant.k2 = p_target.lens_distortion.k2;
+	blit.push_constant.upscale = p_target.lens_distortion.upscale;
+	blit.push_constant.aspect_ratio = p_target.lens_distortion.aspect_ratio;
+	blit.push_constant.source_is_srgb = !texture_storage->render_target_is_using_hdr(p_target.render_target);
+	blit.push_constant.use_debanding = texture_storage->render_target_is_using_debanding(p_target.render_target);
+	blit.push_constant.target_color_space = p_state.color_space;
+	blit.push_constant.reference_multiplier = p_state.reference_multiplier;
+	blit.push_constant.output_max_value = p_state.output_max_value;
+
+	RD::get_singleton()->draw_list_set_push_constant(p_draw_list, &blit.push_constant, sizeof(BlitPushConstant));
+	RD::get_singleton()->draw_list_draw(p_draw_list, true);
+}
+
 void RendererCompositorRD::blit_render_targets_to_screen(DisplayServerEnums::WindowID p_screen, const RenderingServerTypes::BlitToScreen *p_render_targets, int p_amount) {
 	Error err = RD::get_singleton()->screen_prepare_for_drawing(p_screen);
 	if (err != OK) {
+		// GODOT_ANR_FG_OFFSCREEN=1 (tests): ANR FG still generates frames, without presenting them,
+		// when the window cannot be drawn to (minimized, display off). With
+		// GODOT_ANR_FG_DEBUG=generated a viewport capture then saves a generated frame.
+		static const bool anr_offscreen = OS::get_singleton()->get_environment("GODOT_ANR_FG_OFFSCREEN") == "1";
+		if (anr_offscreen && RendererRD::AnrFgEffect::get_singleton() != nullptr) {
+			RendererRD::AnrFgEffect::get_singleton()->process_frame();
+			for (int i = 0; i < p_amount; i++) {
+				if (!p_render_targets[i].multi_view.use_layer && !p_render_targets[i].lens_distortion.apply) {
+					RendererRD::AnrFgEffect::get_singleton()->process_screen_blit(p_screen, p_render_targets[i].render_target, false);
+				}
+			}
+		}
 		// Window is minimized and does not have valid swapchain, skip drawing without printing errors.
 		return;
 	}
@@ -51,10 +121,47 @@ void RendererCompositorRD::blit_render_targets_to_screen(DisplayServerEnums::Win
 	BlitPipelines blit_pipelines = _get_blit_pipelines_for_format(RD::get_singleton()->screen_get_framebuffer_format(p_screen));
 
 	// ANR FG: generate the frame shown before this one, from the render target the window shows.
-	if (RendererRD::AnrFgEffect::get_singleton() != nullptr) {
+	RendererRD::AnrFgEffect *anr_fg = RendererRD::AnrFgEffect::get_singleton();
+	int generated_target = -1;
+	RID generated_texture;
+	if (anr_fg != nullptr) {
+		anr_fg->process_frame();
 		for (int i = 0; i < p_amount; i++) {
-			if (!p_render_targets[i].multi_view.use_layer && !p_render_targets[i].lens_distortion.apply) {
-				RendererRD::AnrFgEffect::get_singleton()->process_screen_blit(p_screen, p_render_targets[i].render_target, p_render_targets[i].dst_rect);
+			if (generated_target < 0 && !p_render_targets[i].multi_view.use_layer && !p_render_targets[i].lens_distortion.apply) {
+				RID generated = anr_fg->process_screen_blit(p_screen, p_render_targets[i].render_target);
+				if (generated.is_valid()) {
+					generated_target = i;
+					generated_texture = generated;
+				}
+			}
+		}
+	}
+
+	BlitTargetState state;
+	state.screen = p_screen;
+	state.color_space = RD::get_singleton()->screen_get_color_space(p_screen);
+	const float reference_luminance = RD::get_singleton()->get_context_driver()->window_get_hdr_output_reference_luminance(p_screen);
+	const float linear_luminance_scale = RD::get_singleton()->get_context_driver()->window_get_hdr_output_linear_luminance_scale(p_screen);
+	state.output_max_value = RD::get_singleton()->get_context_driver()->window_get_output_max_linear_value(p_screen);
+	state.reference_multiplier = _compute_reference_multiplier(state.color_space, reference_luminance, linear_luminance_scale);
+
+	// The generated frame goes through the same blit as the real one (source rect, rotation,
+	// sRGB / HDR output conversion, debanding), into an image of the swap chain's size and format
+	// that the driver copies into the swap chain image it presents first.
+	if (generated_target >= 0) {
+		RID framebuffer = anr_fg->get_generated_screen_framebuffer();
+		if (framebuffer.is_valid()) {
+			BlitPipelines generated_pipelines = _get_blit_pipelines_for_format(RD::get_singleton()->framebuffer_get_format(framebuffer));
+			const Color clear_color;
+			RD::DrawListID generated_list = RD::get_singleton()->draw_list_begin(framebuffer, RD::DRAW_CLEAR_COLOR_0, VectorView<Color>(&clear_color, 1));
+			if (generated_list != RD::INVALID_ID) {
+				for (int i = 0; i < p_amount; i++) {
+					RID texture = i == generated_target ? generated_texture : texture_storage->render_target_get_rd_texture(p_render_targets[i].render_target);
+					ERR_CONTINUE(texture.is_null());
+					_blit_render_target(generated_list, generated_pipelines, state, p_render_targets[i], texture);
+				}
+				RD::get_singleton()->draw_list_end();
+				anr_fg->end_generated_screen_blit();
 			}
 		}
 	}
@@ -62,71 +169,10 @@ void RendererCompositorRD::blit_render_targets_to_screen(DisplayServerEnums::Win
 	RD::DrawListID draw_list = RD::get_singleton()->draw_list_begin_for_screen(p_screen);
 	ERR_FAIL_COND(draw_list == RD::INVALID_ID);
 
-	const RD::ColorSpace color_space = RD::get_singleton()->screen_get_color_space(p_screen);
-	const float reference_luminance = RD::get_singleton()->get_context_driver()->window_get_hdr_output_reference_luminance(p_screen);
-	const float linear_luminance_scale = RD::get_singleton()->get_context_driver()->window_get_hdr_output_linear_luminance_scale(p_screen);
-	const float output_max_value = RD::get_singleton()->get_context_driver()->window_get_output_max_linear_value(p_screen);
-	const float reference_multiplier = _compute_reference_multiplier(color_space, reference_luminance, linear_luminance_scale);
-
 	for (int i = 0; i < p_amount; i++) {
 		RID rd_texture = texture_storage->render_target_get_rd_texture(p_render_targets[i].render_target);
 		ERR_CONTINUE(rd_texture.is_null());
-
-		BlitMode mode = p_render_targets[i].lens_distortion.apply ? BLIT_MODE_LENS : (p_render_targets[i].multi_view.use_layer ? BLIT_MODE_USE_LAYER : BLIT_MODE_NORMAL);
-
-		HashMap<RID, RID>::Iterator it = render_target_descriptors.find(rd_texture);
-		if (it == render_target_descriptors.end() || !RD::get_singleton()->uniform_set_is_valid(it->value)) {
-			Vector<RD::Uniform> uniforms;
-			RD::Uniform u;
-			u.uniform_type = RD::UNIFORM_TYPE_SAMPLER_WITH_TEXTURE;
-			u.binding = 0;
-			u.append_id(blit.sampler);
-			u.append_id(rd_texture);
-			uniforms.push_back(u);
-			RID uniform_set = RD::get_singleton()->uniform_set_create(uniforms, blit.shader.version_get_shader(blit.shader_version, mode), 0);
-
-			it = render_target_descriptors.insert(rd_texture, uniform_set);
-		}
-
-		Size2 screen_size(RD::get_singleton()->screen_get_width(p_screen), RD::get_singleton()->screen_get_height(p_screen));
-
-		RD::get_singleton()->draw_list_bind_render_pipeline(draw_list, blit_pipelines.pipelines[mode]);
-		RD::get_singleton()->draw_list_bind_index_array(draw_list, blit.array);
-		RD::get_singleton()->draw_list_bind_uniform_set(draw_list, it->value, 0);
-
-		// We need to invert the phone rotation.
-		const int screen_rotation_degrees = -RD::get_singleton()->screen_get_pre_rotation_degrees(p_screen);
-		float screen_rotation = Math::deg_to_rad((float)screen_rotation_degrees);
-
-		blit.push_constant.rotation_cos = Math::cos(screen_rotation);
-		blit.push_constant.rotation_sin = Math::sin(screen_rotation);
-		// Swap width and height when the orientation is not the native one.
-		if (screen_rotation_degrees % 180 != 0) {
-			SWAP(screen_size.width, screen_size.height);
-		}
-		blit.push_constant.src_rect[0] = p_render_targets[i].src_rect.position.x;
-		blit.push_constant.src_rect[1] = p_render_targets[i].src_rect.position.y;
-		blit.push_constant.src_rect[2] = p_render_targets[i].src_rect.size.width;
-		blit.push_constant.src_rect[3] = p_render_targets[i].src_rect.size.height;
-		blit.push_constant.dst_rect[0] = p_render_targets[i].dst_rect.position.x / screen_size.width;
-		blit.push_constant.dst_rect[1] = p_render_targets[i].dst_rect.position.y / screen_size.height;
-		blit.push_constant.dst_rect[2] = p_render_targets[i].dst_rect.size.width / screen_size.width;
-		blit.push_constant.dst_rect[3] = p_render_targets[i].dst_rect.size.height / screen_size.height;
-		blit.push_constant.layer = p_render_targets[i].multi_view.layer;
-		blit.push_constant.eye_center[0] = p_render_targets[i].lens_distortion.eye_center.x;
-		blit.push_constant.eye_center[1] = p_render_targets[i].lens_distortion.eye_center.y;
-		blit.push_constant.k1 = p_render_targets[i].lens_distortion.k1;
-		blit.push_constant.k2 = p_render_targets[i].lens_distortion.k2;
-		blit.push_constant.upscale = p_render_targets[i].lens_distortion.upscale;
-		blit.push_constant.aspect_ratio = p_render_targets[i].lens_distortion.aspect_ratio;
-		blit.push_constant.source_is_srgb = !texture_storage->render_target_is_using_hdr(p_render_targets[i].render_target);
-		blit.push_constant.use_debanding = texture_storage->render_target_is_using_debanding(p_render_targets[i].render_target);
-		blit.push_constant.target_color_space = color_space;
-		blit.push_constant.reference_multiplier = reference_multiplier;
-		blit.push_constant.output_max_value = output_max_value;
-
-		RD::get_singleton()->draw_list_set_push_constant(draw_list, &blit.push_constant, sizeof(BlitPushConstant));
-		RD::get_singleton()->draw_list_draw(draw_list, true);
+		_blit_render_target(draw_list, blit_pipelines, state, p_render_targets[i], rd_texture);
 	}
 
 	RD::get_singleton()->draw_list_end();

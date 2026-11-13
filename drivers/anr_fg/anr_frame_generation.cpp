@@ -331,9 +331,23 @@ bool AnrFrameGeneration::_initialize_device() {
 #endif
 }
 
+// GODOT_ANR_FG_DYNAMIC_RES=0: the feature is made for the exact render size and made again at
+// every change of it (the first version's behavior, to compare).
+static bool _dynamic_resolution_enabled() {
+	static const bool enabled = OS::get_singleton()->get_environment("GODOT_ANR_FG_DYNAMIC_RES") != "0";
+	return enabled;
+}
+
 bool AnrFrameGeneration::_create_feature(void *p_command_buffer, const EvaluateParams &p_params) {
 #ifdef ANR_FG_SUPPORTED
 	ParameterMap *p = params;
+	// Made once for the largest render size it may see (the output size, or more when rendering
+	// above it) with DLSSG.DynamicResolution: dynamic resolution and render scale changes then pass
+	// the current size each frame (InternalWidth/Height and the depth and motion subrects) instead
+	// of making the feature again (a stall, 100+ MB of uploads and a history reset each time).
+	const bool dynamic = _dynamic_resolution_enabled();
+	const uint32_t internal_width = dynamic ? MAX(p_params.internal_width, p_params.backbuffer.width) : p_params.internal_width;
+	const uint32_t internal_height = dynamic ? MAX(p_params.internal_height, p_params.backbuffer.height) : p_params.internal_height;
 	p->Set(ANR_NGX_CreationNodeMask, 1u);
 	p->Set(ANR_NGX_VisibilityNodeMask, 1u);
 	p->Set(ANR_NGX_Width, p_params.backbuffer.width);
@@ -341,9 +355,9 @@ bool AnrFrameGeneration::_create_feature(void *p_command_buffer, const EvaluateP
 	p->Set(ANR_DLSSG("Width"), p_params.backbuffer.width);
 	p->Set(ANR_DLSSG("Height"), p_params.backbuffer.height);
 	p->Set(ANR_DLSSG("BackbufferFormat"), p_params.backbuffer.format);
-	p->Set(ANR_DLSSG("InternalWidth"), p_params.internal_width);
-	p->Set(ANR_DLSSG("InternalHeight"), p_params.internal_height);
-	p->Set(ANR_DLSSG("DynamicResolution"), 0u);
+	p->Set(ANR_DLSSG("InternalWidth"), internal_width);
+	p->Set(ANR_DLSSG("InternalHeight"), internal_height);
+	p->Set(ANR_DLSSG("DynamicResolution"), dynamic ? 1u : 0u);
 
 	ANR_NVSDK_NGX_Handle *handle = nullptr;
 	ANR_NGX_Result result;
@@ -353,6 +367,12 @@ bool AnrFrameGeneration::_create_feature(void *p_command_buffer, const EvaluateP
 		result = ((PFN_ANR_NGX_VULKAN_CreateFeature)fn_create)((VkCommandBuffer)p_command_buffer, ANR_NGX_FEATURE_FRAME_GENERATION, p, &handle);
 	}
 	last_result.store(result);
+	feature_width = p_params.backbuffer.width;
+	feature_height = p_params.backbuffer.height;
+	feature_format = p_params.backbuffer.format;
+	feature_internal_width = internal_width;
+	feature_internal_height = internal_height;
+	feature_dynamic = dynamic;
 	if (anr_ngx_failed(result) || handle == nullptr) {
 		_set_status("NGX CreateFeature (frame generation) failed: " + _ngx_result_text(result));
 		ERR_PRINT("ANR FG: " + status);
@@ -361,36 +381,68 @@ bool AnrFrameGeneration::_create_feature(void *p_command_buffer, const EvaluateP
 	}
 
 	feature = handle;
-	feature_width = p_params.backbuffer.width;
-	feature_height = p_params.backbuffer.height;
-	feature_format = p_params.backbuffer.format;
-	feature_internal_width = p_params.internal_width;
-	feature_internal_height = p_params.internal_height;
+	inactive = false;
 	_set_status("running");
-	print_line(vformat("ANR FG: feature created %dx%d (render %dx%d, backbuffer VkFormat %d, result %s).", (int64_t)feature_width, (int64_t)feature_height,
-			(int64_t)feature_internal_width, (int64_t)feature_internal_height, (int64_t)feature_format, _ngx_result_text(result)));
+	print_line(vformat("ANR FG: feature created %dx%d (render %s%dx%d, backbuffer VkFormat %d, result %s).", (int64_t)feature_width, (int64_t)feature_height,
+			dynamic ? "up to " : "", (int64_t)feature_internal_width, (int64_t)feature_internal_height, (int64_t)feature_format, _ngx_result_text(result)));
 	return true;
 #else
 	return false;
 #endif
 }
 
-void AnrFrameGeneration::_release_feature() {
-#ifdef ANR_FG_SUPPORTED
+void AnrFrameGeneration::_retire_feature(uint64_t p_frame, uint32_t p_frames_in_flight) {
 	if (feature == nullptr) {
 		return;
 	}
-	// The provider's resources may still be in use by frames in flight.
-	if (vk_device != 0) {
-		PFN_vkDeviceWaitIdle wait_idle = (PFN_vkDeviceWaitIdle)vkGetDeviceProcAddr((VkDevice)vk_device, "vkDeviceWaitIdle");
-		if (wait_idle != nullptr) {
-			wait_idle((VkDevice)vk_device);
+	// The frames already recorded with it may still run: release it once the GPU is past them
+	// (RenderingDevice waits for a frame's fence before reusing its slot, frames_in_flight later).
+	RetiredFeature retired;
+	retired.handle = feature;
+	retired.release_frame = p_frame + p_frames_in_flight + 1;
+	retired_features.push_back(retired);
+	feature = nullptr;
+}
+
+void AnrFrameGeneration::_release_retired_features(bool p_all) {
+#ifdef ANR_FG_SUPPORTED
+	for (uint32_t i = 0; i < retired_features.size();) {
+		if (p_all || last_frame >= retired_features[i].release_frame) {
+			const ANR_NGX_Result result = ((PFN_ANR_NGX_VULKAN_ReleaseFeature)fn_release)((ANR_NVSDK_NGX_Handle *)retired_features[i].handle);
+			print_verbose("ANR FG: feature released (" + _ngx_result_text(result) + ").");
+			retired_features.remove_at_unordered(i);
+		} else {
+			i++;
 		}
 	}
-	const ANR_NGX_Result result = ((PFN_ANR_NGX_VULKAN_ReleaseFeature)fn_release)((ANR_NVSDK_NGX_Handle *)feature);
-	print_verbose("ANR FG: feature released (" + _ngx_result_text(result) + ").");
-	feature = nullptr;
+#else
+	retired_features.clear();
 #endif
+}
+
+void AnrFrameGeneration::process_frame(uint64_t p_frame) {
+	MutexLock lock(mutex);
+	last_frame = MAX(last_frame, p_frame);
+	if (!retired_features.is_empty()) {
+		_release_retired_features(false);
+	}
+}
+
+void AnrFrameGeneration::set_inactive_reason(const String &p_reason) {
+	MutexLock lock(mutex);
+	if (p_reason.is_empty()) {
+		if (inactive) {
+			inactive = false;
+			_set_status(feature != nullptr ? "running" : (initialized ? "ready" : status));
+		}
+		return;
+	}
+	const String new_status = "inactive: " + p_reason;
+	if (!inactive || status != new_status) {
+		WARN_PRINT("ANR FG: " + new_status);
+	}
+	inactive = true;
+	_set_status(new_status);
 }
 
 #ifdef ANR_FG_SUPPORTED
@@ -422,10 +474,14 @@ bool AnrFrameGeneration::evaluate(void *p_command_buffer, const EvaluateParams &
 	ERR_FAIL_COND_V(!p_params.backbuffer.is_valid() || !p_params.depth.is_valid() || !p_params.motion.is_valid() || !p_params.output_interpolated.is_valid(), false);
 
 	bool reset = p_params.reset;
-	if (feature != nullptr && (feature_width != p_params.backbuffer.width || feature_height != p_params.backbuffer.height || feature_format != p_params.backbuffer.format ||
-										feature_internal_width != p_params.internal_width || feature_internal_height != p_params.internal_height)) {
-		_release_feature();
-		feature_failed = false;
+	last_frame = MAX(last_frame, p_params.frame);
+	// Made again only when the output changes, or the render size outgrows what it was made for
+	// (any render size change without DLSSG.DynamicResolution).
+	const bool internal_fits = feature_dynamic ? (p_params.internal_width <= feature_internal_width && p_params.internal_height <= feature_internal_height)
+											   : (p_params.internal_width == feature_internal_width && p_params.internal_height == feature_internal_height);
+	if ((feature != nullptr || feature_failed) && (feature_width != p_params.backbuffer.width || feature_height != p_params.backbuffer.height || feature_format != p_params.backbuffer.format || !internal_fits)) {
+		_retire_feature(p_params.frame, p_params.frames_in_flight);
+		feature_failed = false; // A failed creation is tried again at the next size change.
 	}
 	if (feature == nullptr) {
 		if (feature_failed) {
@@ -539,6 +595,10 @@ bool AnrFrameGeneration::evaluate(void *p_command_buffer, const EvaluateParams &
 		return false;
 	}
 
+	if (inactive) {
+		inactive = false;
+		_set_status("running");
+	}
 	const int64_t count = evaluated_frames.fetch_add(1) + 1;
 	if (count == 1) {
 		print_line(vformat("ANR FG: first frame generated (EvaluateFeature %s).", _ngx_result_text(result)));
@@ -568,7 +628,8 @@ void AnrFrameGeneration::finish() {
 		print_line(vformat("ANR FG: shutting down (release %s, NGX shutdown %s).", release ? "yes" : "no", shutdown ? "yes" : "no"));
 		fflush(stdout);
 		if (release) {
-			_release_feature();
+			_retire_feature(0, 0);
+			_release_retired_features(true);
 		}
 		print_line("ANR FG: feature released.");
 		fflush(stdout);

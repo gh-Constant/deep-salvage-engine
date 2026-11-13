@@ -3503,11 +3503,20 @@ Error RenderingDeviceDriverVulkan::command_queue_execute_and_present(CommandQueu
 		}
 
 		if (generated_presented) {
-			// Without V-Sync both images would reach the screen together: hold the real one back by
-			// half of a frame's own work so the generated one is seen for a while. The wait itself
-			// is left out of the measure (else it feeds back and halves the frame rate). FIFO paces
-			// by itself. GODOT_ANR_FG_PACING=0: no wait.
-			static const bool pacing = OS::get_singleton()->get_environment("GODOT_ANR_FG_PACING") != "0";
+			// FIFO (V-Sync) shows each image for a refresh by itself. Without it both images would
+			// reach the screen together: in IMMEDIATE mode the real one is held back by half of a
+			// frame's own work so the generated one is seen for a while. The wait itself is left
+			// out of the measure (else it feeds back and halves the frame rate).
+			// This pacing is on the CPU only: it cannot space presents the GPU has not reached yet.
+			// When the GPU is behind (the previous generated copy is not done), both presents wait
+			// for the GPU and reach the screen back to back whatever the CPU does, so it does not
+			// wait then (it would only cost frame rate). MAILBOX keeps the latest image at each
+			// refresh: off by default. A GPU-timed present thread would be needed to do better;
+			// ANR FG is meant for V-Sync. GODOT_ANR_FG_PACING=0 never waits, =1 also in MAILBOX
+			// and when the GPU is behind.
+			static const String pacing_mode = OS::get_singleton()->get_environment("GODOT_ANR_FG_PACING");
+			const bool forced = pacing_mode == "1";
+			const bool pacing = pacing_mode != "0" && (forced || (paced_swap_chain->present_mode == VK_PRESENT_MODE_IMMEDIATE_KHR && !paced_swap_chain->generated_gpu_behind));
 			const uint64_t now = OS::get_singleton()->get_ticks_usec();
 			if (paced_swap_chain->generated_last_present_usec != 0) {
 				const double work = double(now - paced_swap_chain->generated_last_present_usec) - double(paced_swap_chain->generated_last_wait_usec);
@@ -3872,6 +3881,25 @@ void RenderingDeviceDriverVulkan::swap_chain_set_generated_frame(SwapChainID p_s
 	swap_chain->generated_frame.dst_rect = p_dst_rect;
 }
 
+String RenderingDeviceDriverVulkan::swap_chain_get_frame_generation_blocker(SwapChainID p_swap_chain) {
+	DEV_ASSERT(p_swap_chain.id != 0);
+
+	const SwapChain *swap_chain = (const SwapChain *)(p_swap_chain.id);
+	if (swap_chain->vk_swapchain == VK_NULL_HANDLE) {
+		return "the window's swap chain is not created yet";
+	}
+	if (!swap_chain->supports_transfer_dst) {
+		return "the window's swap chain images cannot be copied into (no TRANSFER_DST usage on this surface)";
+	}
+	// The real image is still acquired when the generated one is: a second image can only be had
+	// when the swap chain has more images than the presentation engine keeps.
+	if (swap_chain->images.size() <= swap_chain->min_image_count) {
+		return vformat("the window's swap chain has %d images and the presentation engine keeps %d: set rendering/rendering_device/vsync/swapchain_image_count to %d or more",
+				(int64_t)swap_chain->images.size(), (int64_t)swap_chain->min_image_count, (int64_t)swap_chain->min_image_count + 1);
+	}
+	return String();
+}
+
 void RenderingDeviceDriverVulkan::_swap_chain_release_generated_frame_objects(SwapChain *p_swap_chain) {
 	p_swap_chain->generated_frame = SwapChain::GeneratedFrame();
 	for (const SwapChain::GeneratedSlot &slot : p_swap_chain->generated_slots) {
@@ -3966,8 +3994,14 @@ bool RenderingDeviceDriverVulkan::_swap_chain_present_generated_frame(SwapChain 
 		}
 	}
 
+	// Is the GPU still on an earlier frame (the previous generated copy not done)? Then this frame's
+	// presents will both wait for the GPU and reach the screen back to back, whatever the CPU does.
+	const uint32_t slot_count = p_swap_chain->generated_slots.size();
+	const SwapChain::GeneratedSlot &previous_slot = p_swap_chain->generated_slots[(p_swap_chain->generated_slot_index + slot_count - 1) % slot_count];
+	p_swap_chain->generated_gpu_behind = vkGetFenceStatus(vk_device, previous_slot.fence) == VK_NOT_READY;
+
 	SwapChain::GeneratedSlot &slot = p_swap_chain->generated_slots[p_swap_chain->generated_slot_index];
-	p_swap_chain->generated_slot_index = (p_swap_chain->generated_slot_index + 1) % p_swap_chain->generated_slots.size();
+	p_swap_chain->generated_slot_index = (p_swap_chain->generated_slot_index + 1) % slot_count;
 	vkWaitForFences(vk_device, 1, &slot.fence, VK_TRUE, UINT64_MAX);
 
 	uint32_t image_index = UINT32_MAX;
@@ -4031,7 +4065,17 @@ bool RenderingDeviceDriverVulkan::_swap_chain_present_generated_frame(SwapChain 
 	region.dstOffsets[0] = { dst_rect.position.x, dst_rect.position.y, 0 };
 	region.dstOffsets[1] = { dst_rect.position.x + dst_rect.size.x, dst_rect.position.y + dst_rect.size.y, 1 };
 	const bool same_size = frame.size == dst_rect.size;
-	vkCmdBlitImage(slot.command_buffer, frame.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, same_size ? VK_FILTER_NEAREST : VK_FILTER_LINEAR);
+	if (same_size && frame.format == p_swap_chain->format) {
+		// The image already went through the window's blit: a plain copy.
+		VkImageCopy copy = {};
+		copy.srcSubresource = region.srcSubresource;
+		copy.dstSubresource = region.dstSubresource;
+		copy.dstOffset = region.dstOffsets[0];
+		copy.extent = { (uint32_t)frame.size.x, (uint32_t)frame.size.y, 1 };
+		vkCmdCopyImage(slot.command_buffer, frame.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+	} else {
+		vkCmdBlitImage(slot.command_buffer, frame.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, same_size ? VK_FILTER_NEAREST : VK_FILTER_LINEAR);
+	}
 
 	// Back to the layout the render graph left the generated frame in, and the swap image to present.
 	barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;

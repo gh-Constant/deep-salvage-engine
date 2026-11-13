@@ -34,6 +34,7 @@
 #include "core/object/object.h"
 #include "core/os/mutex.h"
 #include "core/string/ustring.h"
+#include "core/templates/local_vector.h"
 
 #include <atomic>
 
@@ -66,10 +67,12 @@ public:
 		Image depth; // Render-size depth. Required.
 		Image motion; // Render-size motion vectors (RG16F). Required.
 		Image output_interpolated; // Generated frame, written by the provider.
-		Image output_real; // The real frame as the provider passes it on.
+		Image output_real; // The real frame as the provider passes it on (optional, unused by the engine).
 
-		uint32_t internal_width = 0;
+		uint32_t internal_width = 0; // The render size this frame (depth and motion are this size).
 		uint32_t internal_height = 0;
+		uint64_t frame = 0; // The compositor's frame number.
+		uint32_t frames_in_flight = 3; // Frames the GPU may still be working on.
 		bool reset = false;
 		bool depth_inverted = true;
 		bool hdr = false;
@@ -84,7 +87,9 @@ public:
 		float camera_up[3] = {};
 		float camera_right[3] = {};
 		float camera_fwd[3] = {};
-		// 4x4, NGX layout (rows of the column-vector matrix), as the engine's DLSS path gives them.
+		// 4x4, DLSS-G layout as ANR's own NGX host gives them: the row-vector matrix stored row by
+		// row (translation in the last row, w taken from element 11), clip space matching the depth
+		// buffer it is paired with.
 		float view_to_clip[16] = {};
 		float clip_to_view[16] = {};
 		float clip_to_prev_clip[16] = {};
@@ -124,6 +129,17 @@ private:
 	uint32_t feature_internal_height = 0;
 	uint32_t multi_frame_count_max = 0;
 	bool feature_failed = false;
+	bool feature_dynamic = false; // Created with DLSSG.DynamicResolution: any render size up to the internal one.
+
+	// Features replaced while frames using them may still be in flight: released once the GPU is
+	// past them (no device-wide wait, which would race the transfer queues' submissions).
+	struct RetiredFeature {
+		void *handle = nullptr;
+		uint64_t release_frame = 0;
+	};
+	LocalVector<RetiredFeature> retired_features;
+	uint64_t last_frame = 0;
+	bool inactive = false; // Evaluation skipped (status says why).
 
 	String status = "not loaded";
 	std::atomic<int64_t> evaluated_frames = { 0 };
@@ -134,7 +150,8 @@ private:
 	bool _load_provider();
 	bool _initialize_device();
 	bool _create_feature(void *p_command_buffer, const EvaluateParams &p_params);
-	void _release_feature();
+	void _retire_feature(uint64_t p_frame, uint32_t p_frames_in_flight);
+	void _release_retired_features(bool p_all);
 	void _set_status(const String &p_status);
 
 protected:
@@ -167,7 +184,14 @@ public:
 	// interpolated frame was written.
 	bool evaluate(void *p_command_buffer, const EvaluateParams &p_params);
 	void note_generated_frame_presented();
-	void finish(); // Releases the feature and NGX before the device goes away.
+	// Frame generation is on but cannot run (for example the window's swap chain cannot take a
+	// generated frame): get_status() says why. An empty reason clears it.
+	void set_inactive_reason(const String &p_reason);
+	// Releases replaced features the GPU is done with (called once per frame).
+	void process_frame(uint64_t p_frame);
+	// Releases the features and shuts NGX down. The GPU must be idle and no queue submitting
+	// (RenderingDevice::finalize calls it after stalling for every frame and transfer worker).
+	void finish();
 
 	AnrFrameGeneration();
 	~AnrFrameGeneration();

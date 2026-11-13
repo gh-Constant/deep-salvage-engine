@@ -497,6 +497,8 @@ public:
 	// already recorded in this frame) into p_dst_rect of another swap chain image. Cleared after
 	// every present. Drivers without support ignore it.
 	virtual void swap_chain_set_generated_frame(SwapChainID p_swap_chain, uint64_t p_native_image, uint32_t p_native_format, Size2i p_size, Rect2i p_dst_rect) {}
+	// Why this swap chain cannot present generated frames, or an empty string when it can.
+	virtual String swap_chain_get_frame_generation_blocker(SwapChainID p_swap_chain) { return "the rendering driver cannot present generated frames"; }
 
 	// Wait until all rendering associated to the swap chain is finished before deleting it.
 	virtual void swap_chain_free(SwapChainID p_swap_chain) = 0;

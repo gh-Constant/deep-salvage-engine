@@ -476,6 +476,7 @@ private:
 		uint64_t generated_last_present_usec = 0;
 		uint64_t generated_last_wait_usec = 0;
 		double generated_real_interval_usec = 0.0;
+		bool generated_gpu_behind = false; // The previous generated copy was not done at this present.
 		bool generated_warned = false;
 #ifdef ANDROID_ENABLED
 		uint64_t refresh_duration = 0;
@@ -498,6 +499,7 @@ public:
 	virtual bool swap_chain_get_hdr_output_supported(SwapChainID p_swap_chain) override final;
 	virtual void swap_chain_set_max_fps(SwapChainID p_swap_chain, int p_max_fps) override final;
 	virtual void swap_chain_set_generated_frame(SwapChainID p_swap_chain, uint64_t p_native_image, uint32_t p_native_format, Size2i p_size, Rect2i p_dst_rect) override final;
+	virtual String swap_chain_get_frame_generation_blocker(SwapChainID p_swap_chain) override final;
 	virtual void swap_chain_free(SwapChainID p_swap_chain) override final;
 
 private:

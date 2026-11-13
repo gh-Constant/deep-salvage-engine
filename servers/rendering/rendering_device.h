@@ -1347,6 +1347,11 @@ public:
 	Error screen_free(DisplayServerEnums::WindowID p_screen = DisplayServerEnums::MAIN_WINDOW_ID);
 	// The driver's swap chain of a screen (an empty ID when there is none), for driver callbacks.
 	RDD::SwapChainID screen_get_swap_chain(DisplayServerEnums::WindowID p_screen = DisplayServerEnums::MAIN_WINDOW_ID) const;
+	// The data format of a screen's swap chain images (DATA_FORMAT_MAX when it has none).
+	DataFormat screen_get_data_format(DisplayServerEnums::WindowID p_screen = DisplayServerEnums::MAIN_WINDOW_ID) const;
+	// Frame generation: why the screen's swap chain cannot present a generated frame before each
+	// real one, or an empty string when it can.
+	String screen_get_frame_generation_blocker(DisplayServerEnums::WindowID p_screen = DisplayServerEnums::MAIN_WINDOW_ID) const;
 
 private:
 	/********************************/
