@@ -159,6 +159,7 @@
 #endif // MODULE_GDSCRIPT_ENABLED
 
 #include "drivers/aftermath/aftermath.h"
+#include "drivers/anr_fg/anr_frame_generation.h"
 #include "drivers/streamline/streamline.h"
 
 /* Static members */
@@ -194,6 +195,7 @@ static ThemeDB *theme_db = nullptr;
 static XRServer *xr_server = nullptr;
 #endif // XR_DISABLED
 static Streamline *streamline = nullptr;
+static AnrFrameGeneration *anr_frame_generation = nullptr;
 static Aftermath *aftermath = nullptr;
 // We error out if setup2() doesn't turn this true
 static bool _start_success = false;
@@ -1045,6 +1047,10 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 	/* create streamline and register singleton */
 	streamline = memnew(Streamline);
 	Streamline::register_singleton();
+
+	/* create ANR frame generation (provider DLL loaded on demand) and register singleton */
+	anr_frame_generation = memnew(AnrFrameGeneration);
+	AnrFrameGeneration::register_singleton();
 
 	/* create aftermath singleton (no project settings; DLL loaded on demand) */
 	aftermath = memnew(Aftermath);
@@ -3097,6 +3103,10 @@ error:
 	if (streamline) {
 		memdelete(streamline);
 		streamline = nullptr;
+	}
+	if (anr_frame_generation) {
+		memdelete(anr_frame_generation);
+		anr_frame_generation = nullptr;
 	}
 	if (aftermath) {
 		memdelete(aftermath);
@@ -5449,6 +5459,10 @@ void Main::cleanup(bool p_force) {
 
 	memdelete(streamline);
 	streamline = nullptr;
+	if (anr_frame_generation) {
+		memdelete(anr_frame_generation);
+		anr_frame_generation = nullptr;
+	}
 	memdelete(aftermath);
 	aftermath = nullptr;
 	memdelete(input);

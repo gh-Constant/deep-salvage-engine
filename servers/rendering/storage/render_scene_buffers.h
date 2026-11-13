@@ -54,6 +54,7 @@ private:
 	bool use_taa = false;
 	bool use_debanding = false;
 	bool use_frame_generation = false;
+	int frame_generation_provider = 0; // 0: DLSS-G, 1: ANR FG.
 
 protected:
 	static void _bind_methods();
@@ -100,6 +101,9 @@ public:
 
 	bool get_use_frame_generation() const { return use_frame_generation; }
 	void set_use_frame_generation(bool p_frame_generation) { use_frame_generation = p_frame_generation; }
+
+	int get_frame_generation_provider() const { return frame_generation_provider; }
+	void set_frame_generation_provider(int p_provider) { frame_generation_provider = p_provider; }
 
 	RenderSceneBuffersConfiguration() {}
 	virtual ~RenderSceneBuffersConfiguration() {}

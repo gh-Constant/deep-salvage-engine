@@ -451,6 +451,33 @@ private:
 		RenderPassID render_pass;
 		int pre_transform_rotation_degrees = 0;
 		uint32_t image_index = 0;
+		VkPresentModeKHR present_mode = VK_PRESENT_MODE_FIFO_KHR;
+		uint32_t min_image_count = 0;
+		bool supports_transfer_dst = false;
+
+		// Frame generation (ANR FG): a generated frame presented before the real one, and the
+		// objects presenting it needs (a copy into a second swap chain image).
+		struct GeneratedFrame {
+			VkImage image = VK_NULL_HANDLE;
+			VkFormat format = VK_FORMAT_UNDEFINED;
+			Size2i size;
+			Rect2i dst_rect;
+		} generated_frame;
+		struct GeneratedSlot {
+			VkCommandBuffer command_buffer = VK_NULL_HANDLE;
+			VkFence fence = VK_NULL_HANDLE;
+			VkSemaphore acquire_semaphore = VK_NULL_HANDLE;
+		};
+		LocalVector<GeneratedSlot> generated_slots;
+		uint32_t generated_slot_index = 0;
+		VkCommandPool generated_command_pool = VK_NULL_HANDLE;
+		uint32_t generated_queue_family = UINT32_MAX;
+		TightLocalVector<VkSemaphore> generated_present_semaphores;
+		uint64_t generated_last_present_usec = 0;
+		uint64_t generated_last_wait_usec = 0;
+		double generated_real_interval_usec = 0.0;
+		bool generated_gpu_behind = false; // The previous generated copy was not done at this present.
+		bool generated_warned = false;
 #ifdef ANDROID_ENABLED
 		uint64_t refresh_duration = 0;
 #endif
@@ -458,6 +485,8 @@ private:
 
 	bool _determine_swap_chain_format(RenderingContextDriver::SurfaceID p_surface, VkFormat &r_format, VkColorSpaceKHR &r_color_space, RDD::ColorSpace &r_rdd_color_space);
 	void _swap_chain_release(SwapChain *p_swap_chain);
+	void _swap_chain_release_generated_frame_objects(SwapChain *p_swap_chain);
+	bool _swap_chain_present_generated_frame(SwapChain *p_swap_chain, CommandQueue *p_command_queue, Queue &p_device_queue);
 
 public:
 	virtual SwapChainID swap_chain_create(RenderingContextDriver::SurfaceID p_surface) override final;
@@ -469,6 +498,8 @@ public:
 	virtual ColorSpace swap_chain_get_color_space(SwapChainID p_swap_chain) override final;
 	virtual bool swap_chain_get_hdr_output_supported(SwapChainID p_swap_chain) override final;
 	virtual void swap_chain_set_max_fps(SwapChainID p_swap_chain, int p_max_fps) override final;
+	virtual void swap_chain_set_generated_frame(SwapChainID p_swap_chain, uint64_t p_native_image, uint32_t p_native_format, Size2i p_size, Rect2i p_dst_rect) override final;
+	virtual String swap_chain_get_frame_generation_blocker(SwapChainID p_swap_chain) override final;
 	virtual void swap_chain_free(SwapChainID p_swap_chain) override final;
 
 private:

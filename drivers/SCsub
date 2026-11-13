@@ -72,6 +72,9 @@ SConscript("png/SCsub")
 # Streamline
 SConscript("streamline/SCsub")
 
+# ANR FG (Apex Neural Rendering frame generation)
+SConscript("anr_fg/SCsub")
+
 # Aftermath
 SConscript("aftermath/SCsub")
 

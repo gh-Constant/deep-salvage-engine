@@ -178,6 +178,7 @@ void RenderSceneBuffersRD::configure(const RenderSceneBuffersConfiguration *p_co
 	screen_space_aa = p_config->get_screen_space_aa();
 
 	frame_generation = p_config->get_use_frame_generation();
+	frame_generation_provider = p_config->get_frame_generation_provider();
 	fsr_sharpness = p_config->get_fsr_sharpness();
 	texture_mipmap_bias = p_config->get_texture_mipmap_bias();
 	anisotropic_filtering_level = p_config->get_anisotropic_filtering_level();
@@ -238,6 +239,7 @@ void RenderSceneBuffersRD::configure_for_reflections(const Size2i p_reflection_s
 	use_taa = false;
 	use_debanding = false;
 	frame_generation = false;
+	frame_generation_provider = 0;
 	view_count = 1;
 
 	// cleanout any old buffers we had.

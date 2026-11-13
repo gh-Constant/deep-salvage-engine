@@ -4416,6 +4416,14 @@
 				Toggles Frame Generation technology on a viewport. (Currently supports DLSS 3.0 - NVIDIA only)
 			</description>
 		</method>
+		<method name="viewport_set_frame_generation_provider">
+			<return type="void" />
+			<param index="0" name="viewport" type="RID" />
+			<param index="1" name="provider" type="int" />
+			<description>
+				Sets who generates frames on a viewport with frame generation on: [code]0[/code] NVIDIA DLSS-G, [code]1[/code] ANR FG (see [enum Viewport.FrameGenerationProvider]).
+			</description>
+		</method>
 		<method name="viewport_set_fsr_sharpness">
 			<return type="void" />
 			<param index="0" name="viewport" type="RID" />

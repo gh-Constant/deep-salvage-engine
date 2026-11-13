@@ -5171,6 +5171,21 @@ bool Viewport::get_frame_generation() const {
 	return frame_generation;
 }
 
+void Viewport::set_frame_generation_provider(FrameGenerationProvider p_provider) {
+	ERR_MAIN_THREAD_GUARD;
+	ERR_FAIL_INDEX((int)p_provider, (int)FRAME_GENERATION_PROVIDER_MAX);
+	if (frame_generation_provider == p_provider) {
+		return;
+	}
+
+	frame_generation_provider = p_provider;
+	RS::get_singleton()->viewport_set_frame_generation_provider(viewport, (int)p_provider);
+}
+
+Viewport::FrameGenerationProvider Viewport::get_frame_generation_provider() const {
+	return frame_generation_provider;
+}
+
 void Viewport::set_scaling_3d_scale(float p_scaling_3d_scale) {
 	ERR_MAIN_THREAD_GUARD;
 	// Clamp to reasonable values that are actually useful.
@@ -5555,6 +5570,8 @@ void Viewport::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("set_frame_generation", "frame_generation"), &Viewport::set_frame_generation);
 	ClassDB::bind_method(D_METHOD("get_frame_generation"), &Viewport::get_frame_generation);
+	ClassDB::bind_method(D_METHOD("set_frame_generation_provider", "provider"), &Viewport::set_frame_generation_provider);
+	ClassDB::bind_method(D_METHOD("get_frame_generation_provider"), &Viewport::get_frame_generation_provider);
 	ClassDB::bind_method(D_METHOD("set_scaling_3d_custom_upscaler", "upscaler"), &Viewport::set_scaling_3d_custom_upscaler);
 	ClassDB::bind_method(D_METHOD("get_scaling_3d_custom_upscaler"), &Viewport::get_scaling_3d_custom_upscaler);
 
@@ -5622,6 +5639,7 @@ void Viewport::_bind_methods() {
 	}
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "scaling_3d_scale", PROPERTY_HINT_RANGE, "0.1,2.0,0.0001"), "set_scaling_3d_scale", "get_scaling_3d_scale");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "frame_generation"), "set_frame_generation", "get_frame_generation");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "frame_generation_provider", PROPERTY_HINT_ENUM, "DLSS,ANR FG"), "set_frame_generation_provider", "get_frame_generation_provider");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "scaling_3d_custom_upscaler", PROPERTY_HINT_RESOURCE_TYPE, "ViewportUpscaler"), "set_scaling_3d_custom_upscaler", "get_scaling_3d_custom_upscaler");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "texture_mipmap_bias", PROPERTY_HINT_RANGE, "-2,2,0.001"), "set_texture_mipmap_bias", "get_texture_mipmap_bias");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "anisotropic_filtering_level", PROPERTY_HINT_ENUM, String::utf8("Disabled (Fastest),2× (Faster),4× (Fast),8× (Average),16x (Slow)")), "set_anisotropic_filtering_level", "get_anisotropic_filtering_level");
@@ -5695,6 +5713,10 @@ void Viewport::_bind_methods() {
 	BIND_ENUM_CONSTANT(SCALING_3D_MODE_CUSTOM);
 	BIND_ENUM_CONSTANT(SCALING_3D_MODE_FSR3);
 	BIND_ENUM_CONSTANT(SCALING_3D_MODE_MAX);
+
+	BIND_ENUM_CONSTANT(FRAME_GENERATION_PROVIDER_DLSS);
+	BIND_ENUM_CONSTANT(FRAME_GENERATION_PROVIDER_ANR);
+	BIND_ENUM_CONSTANT(FRAME_GENERATION_PROVIDER_MAX);
 
 	BIND_ENUM_CONSTANT(MSAA_DISABLED);
 	BIND_ENUM_CONSTANT(MSAA_2X);

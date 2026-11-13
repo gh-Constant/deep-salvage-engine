@@ -1,0 +1,8 @@
+#!/usr/bin/env python
+from misc.utility.scons_hints import *
+
+Import("env")
+
+# ANR FG: native frame generation through a DLSS-G provider DLL's NGX Vulkan exports.
+env_anr_fg = env.Clone()
+env_anr_fg.add_source_files(env.drivers_sources, "*.cpp")

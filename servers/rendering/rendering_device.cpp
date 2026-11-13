@@ -39,6 +39,7 @@
 #include "core/os/os.h"
 #include "core/profiling/profiling.h"
 #include "core/templates/fixed_vector.h"
+#include "drivers/anr_fg/anr_frame_generation.h"
 #include "servers/rendering/renderer_rd/uniform_set_cache_rd.h"
 #include "servers/rendering/rendering_device_binds.h"
 #include "servers/rendering/rendering_shader_container.h"
@@ -6045,6 +6046,27 @@ RenderingDevice::FramebufferFormatID RenderingDevice::screen_get_framebuffer_for
 	return const_cast<RenderingDevice *>(this)->framebuffer_format_create(screen_attachment);
 }
 
+RDD::SwapChainID RenderingDevice::screen_get_swap_chain(DisplayServerEnums::WindowID p_screen) const {
+	_THREAD_SAFE_METHOD_
+
+	HashMap<DisplayServerEnums::WindowID, RDD::SwapChainID>::ConstIterator it = screen_swap_chains.find(p_screen);
+	return it == screen_swap_chains.end() ? RDD::SwapChainID() : it->value;
+}
+
+RenderingDevice::DataFormat RenderingDevice::screen_get_data_format(DisplayServerEnums::WindowID p_screen) const {
+	_THREAD_SAFE_METHOD_
+
+	HashMap<DisplayServerEnums::WindowID, RDD::SwapChainID>::ConstIterator it = screen_swap_chains.find(p_screen);
+	return it == screen_swap_chains.end() ? DATA_FORMAT_MAX : driver->swap_chain_get_format(it->value);
+}
+
+String RenderingDevice::screen_get_frame_generation_blocker(DisplayServerEnums::WindowID p_screen) const {
+	_THREAD_SAFE_METHOD_
+
+	HashMap<DisplayServerEnums::WindowID, RDD::SwapChainID>::ConstIterator it = screen_swap_chains.find(p_screen);
+	return it == screen_swap_chains.end() ? String("the window has no swap chain") : driver->swap_chain_get_frame_generation_blocker(it->value);
+}
+
 RenderingDevice::ColorSpace RenderingDevice::screen_get_color_space(DisplayServerEnums::WindowID p_screen) const {
 	_THREAD_SAFE_METHOD_
 
@@ -9636,6 +9658,12 @@ void RenderingDevice::finalize() {
 	_submit_transfer_workers();
 	_wait_for_transfer_workers();
 
+	// ANR FG's provider releases its features and shuts NGX down on this device now that the GPU is
+	// idle and no queue is submitting (no device-wide wait of its own, which would race them).
+	if (is_main_instance && AnrFrameGeneration::get_singleton() != nullptr) {
+		AnrFrameGeneration::get_singleton()->finish();
+	}
+
 	// Delete everything the graph has created.
 	draw_graph.finalize();
 
@@ -9818,6 +9846,10 @@ bool RenderingDevice::has_feature(const Features p_feature) const {
 			// The VRS_METHOD_RASTERIZATION_RATE_MAP method is managed by the Metal rendering driver, so it doesn't
 			// report the SUPPORTS_ATTACHMENT_VRS feature, to avoid VRS texture creation logic.
 			return fsr_capabilities.attachment_supported || fdm_capabilities.attachment_supported;
+		}
+		case SUPPORTS_ANR_FRAME_GENERATION: {
+			// Loads the provider and initializes NGX on this device on first use.
+			return AnrFrameGeneration::get_singleton() != nullptr && AnrFrameGeneration::get_singleton()->is_available();
 		}
 		default:
 			return driver->has_feature(p_feature);
@@ -10554,6 +10586,7 @@ void RenderingDevice::_bind_methods() {
 	BIND_ENUM_CONSTANT(SUPPORTS_SHADER_DEVICE_CLOCK);
 	BIND_ENUM_CONSTANT(SUPPORTS_VERTEX_PIPELINE_STORES);
 	BIND_ENUM_CONSTANT(SUPPORTS_RAYTRACING_POSITION_FETCH);
+	BIND_ENUM_CONSTANT(SUPPORTS_ANR_FRAME_GENERATION);
 
 	BIND_ENUM_CONSTANT(LIMIT_MAX_BOUND_UNIFORM_SETS);
 	BIND_ENUM_CONSTANT(LIMIT_MAX_FRAMEBUFFER_COLOR_ATTACHMENTS);

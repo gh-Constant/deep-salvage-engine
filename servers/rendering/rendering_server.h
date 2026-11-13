@@ -577,6 +577,8 @@ public:
 	virtual void viewport_set_scaling_3d_mode(RID p_viewport, RSE::ViewportScaling3DMode p_scaling_3d_mode) = 0;
 	virtual void viewport_set_scaling_3d_scale(RID p_viewport, float p_scaling_3d_scale) = 0;
 	virtual void viewport_set_frame_generation(RID p_viewport, bool p_frame_generation) = 0;
+	// 0: NVIDIA DLSS-G (Streamline), 1: ANR FG (Viewport::FrameGenerationProvider).
+	virtual void viewport_set_frame_generation_provider(RID p_viewport, int p_provider) = 0;
 	virtual void viewport_set_scaling_3d_custom_upscaler(RID p_viewport, RID p_viewport_upscaler) = 0;
 	virtual void viewport_set_fsr_sharpness(RID p_viewport, float p_fsr_sharpness) = 0;
 	virtual void viewport_set_texture_mipmap_bias(RID p_viewport, float p_texture_mipmap_bias) = 0;

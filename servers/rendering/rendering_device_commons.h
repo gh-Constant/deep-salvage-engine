@@ -1044,6 +1044,8 @@ public:
 		SUPPORTS_SHADER_DEVICE_CLOCK,
 		SUPPORTS_VERTEX_PIPELINE_STORES,
 		SUPPORTS_RAYTRACING_POSITION_FETCH,
+		// ANR FG (Apex Neural Rendering frame generation) found and initialized on this device.
+		SUPPORTS_ANR_FRAME_GENERATION,
 	};
 
 	enum SubgroupOperations {

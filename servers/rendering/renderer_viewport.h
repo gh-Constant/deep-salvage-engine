@@ -73,6 +73,7 @@ public:
 		bool fsr_enabled = false;
 		bool dlss_enabled = false;
 		bool frame_generation = false;
+		int frame_generation_provider = 0;
 		uint32_t jitter_phase_count = 0;
 		RSE::ViewportUpdateMode update_mode = RSE::VIEWPORT_UPDATE_WHEN_VISIBLE;
 		RID render_target;
@@ -263,6 +264,7 @@ public:
 	void viewport_set_scaling_3d_mode(RID p_viewport, RSE::ViewportScaling3DMode p_mode);
 	void viewport_set_scaling_3d_scale(RID p_viewport, float p_scaling_3d_scale);
 	void viewport_set_frame_generation(RID p_viewport, bool p_frame_generation);
+	void viewport_set_frame_generation_provider(RID p_viewport, int p_provider);
 	void viewport_set_scaling_3d_custom_upscaler(RID p_viewport, RID p_viewport_upscaler);
 	void viewport_set_fsr_sharpness(RID p_viewport, float p_sharpness);
 	void viewport_set_texture_mipmap_bias(RID p_viewport, float p_mipmap_bias);

@@ -116,6 +116,14 @@ protected:
 
 	BlitPipelines _get_blit_pipelines_for_format(RenderingDevice::FramebufferFormatID format);
 	float _compute_reference_multiplier(RD::ColorSpace p_color_space, const float p_reference_luminance, const float p_linear_luminance_scale);
+	struct BlitTargetState {
+		DisplayServerEnums::WindowID screen = DisplayServerEnums::MAIN_WINDOW_ID;
+		RD::ColorSpace color_space = RD::COLOR_SPACE_MAX;
+		float reference_multiplier = 1.0f;
+		float output_max_value = 1.0f;
+	};
+	// Draws one render target (or p_texture in its place: a generated frame) the way the window shows it.
+	void _blit_render_target(RD::DrawListID p_draw_list, const BlitPipelines &p_pipelines, const BlitTargetState &p_state, const RenderingServerTypes::BlitToScreen &p_target, RID p_texture);
 
 public:
 	virtual RendererUtilities *get_utilities() override { return utilities; }

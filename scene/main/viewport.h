@@ -113,6 +113,14 @@ public:
 		SCALING_3D_MODE_MAX
 	};
 
+	// Who generates frames when frame_generation is on: NVIDIA DLSS-G (Streamline, with the DLSS
+	// upscaler) or ANR FG (Apex Neural Rendering, any temporal upscaler or none, Vulkan).
+	enum FrameGenerationProvider {
+		FRAME_GENERATION_PROVIDER_DLSS,
+		FRAME_GENERATION_PROVIDER_ANR,
+		FRAME_GENERATION_PROVIDER_MAX
+	};
+
 	enum PositionalShadowAtlasQuadrantSubdiv {
 		SHADOW_ATLAS_QUADRANT_SUBDIV_DISABLED,
 		SHADOW_ATLAS_QUADRANT_SUBDIV_1,
@@ -354,6 +362,7 @@ private:
 	Scaling3DMode scaling_3d_mode = SCALING_3D_MODE_BILINEAR;
 	float scaling_3d_scale = 1.0;
 	bool frame_generation = false;
+	FrameGenerationProvider frame_generation_provider = FRAME_GENERATION_PROVIDER_DLSS;
 	Ref<ViewportUpscaler> scaling_3d_custom_upscaler;
 	Ref<ViewportUpscaler> builtin_fsr3_upscaler;
 	float fsr_sharpness = 0.2f;
@@ -653,6 +662,8 @@ public:
 
 	void set_frame_generation(bool p_frame_generation);
 	bool get_frame_generation() const;
+	void set_frame_generation_provider(FrameGenerationProvider p_provider);
+	FrameGenerationProvider get_frame_generation_provider() const;
 	void set_scaling_3d_custom_upscaler(const Ref<ViewportUpscaler> &p_upscaler);
 	Ref<ViewportUpscaler> get_scaling_3d_custom_upscaler() const;
 
@@ -1020,6 +1031,7 @@ public:
 	SubViewport();
 };
 VARIANT_ENUM_CAST(Viewport::Scaling3DMode);
+VARIANT_ENUM_CAST(Viewport::FrameGenerationProvider);
 VARIANT_ENUM_CAST(SubViewport::UpdateMode);
 VARIANT_ENUM_CAST(Viewport::PositionalShadowAtlasQuadrantSubdiv);
 VARIANT_ENUM_CAST(Viewport::MSAA);

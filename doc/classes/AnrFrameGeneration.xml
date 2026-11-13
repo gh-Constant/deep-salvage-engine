@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="AnrFrameGeneration" inherits="Object" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		ANR FG (Apex Neural Rendering frame generation), driven natively by the engine.
+	</brief_description>
+	<description>
+		The engine loads ANR FG's provider, [code]nvngx_dlssg.dll[/code], and drives it through its NGX Vulkan exports, as a game's NGX host would, with no OptiScaler, NVIDIA driver or Streamline. The provider's folder (the DLL with its [code]adapters[/code], [code]kernels[/code], [code]programs[/code] and [code]nr_fg.ini[/code]) is looked for in the [code]GODOT_ANR_FG_PATH[/code] environment variable, then [member ProjectSettings.rendering/anr_frame_generation/provider_path], then the [code]anr_fg[/code] folder next to the executable.
+		Turn it on with [member Viewport.frame_generation] and [member Viewport.frame_generation_provider] set to [constant Viewport.FRAME_GENERATION_PROVIDER_ANR]. Each drawn frame is then preceded on screen by one generated frame. Environment variables: [code]GODOT_ANR_FG_FORCE=1[/code] turns it on for every viewport drawn to a window (tests), [code]GODOT_ANR_FG_PACING=0|1[/code] never holds the real frame back without V-Sync, or also does it in MAILBOX mode and when the GPU is behind (by default only in IMMEDIATE mode while the GPU keeps up: the wait is on the CPU, so ANR FG is meant to be used with V-Sync), [code]GODOT_ANR_FG_MATRICES=legacy|d3d[/code] passes the camera matrices as the first version did or with D3D's clip space Y up, [code]GODOT_ANR_FG_DYNAMIC_RES=0[/code] makes the provider's feature again at every render size change instead of once for any size up to the output size, [code]GODOT_ANR_FG_OUTPUT_REAL=1[/code] also passes the provider a real-frame output it copies the backbuffer into, [code]GODOT_ANR_FG_MVEC_SCALE=normalized[/code] gives the motion vector scale as 1 instead of the render size, [code]GODOT_ANR_FG_DEBUG=generated[/code] shows the generated frame in place of the real one (a viewport capture then saves it), [code]GODOT_ANR_FG_EXIT=full|release|none[/code] chooses what is torn down at exit.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="get_evaluated_frames" qualifiers="const">
+			<return type="int" />
+			<description>
+				Frames the provider generated successfully (NGX EvaluateFeature calls that succeeded).
+			</description>
+		</method>
+		<method name="get_failed_frames" qualifiers="const">
+			<return type="int" />
+			<description>
+				NGX EvaluateFeature calls that failed.
+			</description>
+		</method>
+		<method name="get_last_result" qualifiers="const">
+			<return type="int" />
+			<description>
+				The last NGX result code ([code]1[/code] is success, [code]0xBAD0xxxx[/code] a failure).
+			</description>
+		</method>
+		<method name="get_max_generated_frames" qualifiers="const">
+			<return type="int" />
+			<description>
+				The provider's [code]DLSSG.MultiFrameCountMax[/code]: generated frames it can make per drawn frame. The engine generates one.
+			</description>
+		</method>
+		<method name="get_presented_frames" qualifiers="const">
+			<return type="int" />
+			<description>
+				Generated frames presented to a window.
+			</description>
+		</method>
+		<method name="get_provider_path" qualifiers="const">
+			<return type="String" />
+			<description>
+				The provider DLL's path, found or looked for.
+			</description>
+		</method>
+		<method name="get_provider_version" qualifiers="const">
+			<return type="String" />
+			<description>
+				The provider DLL's file version, once loaded.
+			</description>
+		</method>
+		<method name="get_status" qualifiers="const">
+			<return type="String" />
+			<description>
+				What ANR FG is doing ([code]ready[/code], [code]running[/code]), or why it is unavailable. [code]inactive: <reason>[/code] when frame generation is on but no frame is generated, for example when the window's swap chain cannot present a second image.
+			</description>
+		</method>
+		<method name="is_available">
+			<return type="bool" />
+			<description>
+				Loads the provider and initializes NGX on the rendering device on first call. [code]true[/code] when frames can be generated.
+			</description>
+		</method>
+	</methods>
+</class>
