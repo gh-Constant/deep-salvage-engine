@@ -13,7 +13,7 @@
 /* Reading follows OceanWaveQuery and the water's vertex shader: the      */
 /* weave (two readings of each cascade, the sideways push), choppy waves  */
 /* inverted by fixed-point iteration, the water's orbital velocity.       */
-/* Keep every constant in step with the shaders and core/ocean/*.gd.      */
+/* Keep every constant in step with the shaders and core/ocean/ scripts. */
 /**************************************************************************/
 
 #pragma once
