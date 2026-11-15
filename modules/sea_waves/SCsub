@@ -1,0 +1,11 @@
+#!/usr/bin/env python
+from misc.utility.scons_hints import *
+
+Import("env")
+Import("env_modules")
+
+env_sea_waves = env_modules.Clone()
+
+module_obj = []
+env_sea_waves.add_source_files(module_obj, "*.cpp")
+env.modules_sources += module_obj

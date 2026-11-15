@@ -1,0 +1,70 @@
+# Fast engine iterations on the Mac: only the macOS editor (the game runs on it), with the SCons
+# cache of the release builds, so a push only recompiles what changed.
+#
+# Push to a dev/* branch (or run it by hand), then in the game repo:
+#   make engine-dev BRANCH=dev/<name>
+# which downloads this run's editor into engine/.
+
+name: Deep Salvage macOS dev build
+
+on:
+  push:
+    branches: ["dev/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}|${{ github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  PYTHONIOENCODING: utf8
+
+jobs:
+  macos:
+    name: macOS editor (Metal, dev)
+    runs-on: macos-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore the SCons cache
+        uses: ./.github/actions/godot-cache-restore
+        with:
+          cache-name: ds-macos-editor
+        continue-on-error: true
+
+      - name: Setup Python and SCons
+        uses: ./.github/actions/godot-deps
+
+      - name: Build
+        uses: ./.github/actions/godot-build
+        with:
+          platform: macos
+          target: editor
+          scons-flags: >-
+            arch=arm64
+            vulkan=no
+            accesskit=no
+            debug_symbols=no
+
+      - name: Save the SCons cache
+        uses: ./.github/actions/godot-cache-save
+        with:
+          cache-name: ds-macos-editor
+        continue-on-error: true
+
+      - name: Package as an app
+        run: |
+          app="Deep Salvage Engine.app"
+          cp -R misc/dist/macos_tools.app "$app"
+          mkdir -p "$app/Contents/MacOS"
+          cp bin/godot.macos.editor.arm64 "$app/Contents/MacOS/Godot"
+          chmod +x "$app/Contents/MacOS/Godot"
+          codesign --force --deep --sign - "$app"
+          ditto -c -k --keepParent "$app" deep-salvage-engine-macos.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deep-salvage-engine-macos
+          path: deep-salvage-engine-macos.zip
+          retention-days: 7
